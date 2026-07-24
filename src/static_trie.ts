@@ -1,4 +1,3 @@
-import { diff } from 'node:util';
 import { TRIE_NUMBERS, REFTRIE_NUMBERS } from './static_common.js'
 
 export const createStaticTrieContext = (): {

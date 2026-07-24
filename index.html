@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>郵便番号検索テスト</title>
+</head>
+
+<body>
+  <h1>郵便番号検索テスト</h1>
+  <fieldset id="fieldset">
+    <legend>検索方法</legend>
+    <div>
+      <input type="radio" id="radioForEachIndefOf" name="searchMethod" value="forEachIndefOf" checked />
+      <label for="radioForEachIndefOf">直接部分一致検索</label>
+    </div>
+    <div>
+      <input type="radio" id="radioSearchTrieRoot" name="searchMethod" value="searchTrieRoot" />
+      <label for="radioSearchTrieRoot">トライ木先頭一致検索</label>
+    </div>
+    <div>
+      <input type="radio" id="radioStaticSearchTrieRoot" name="searchMethod" value="staticSearchTrieRoot" />
+      <label for="radioStaticSearchTrieRoot">静的トライ木先頭一致検索</label>
+    </div>
+    <div>
+      <input type="radio" id="radioSearchTrieSubstr" name="searchMethod" value="searchTrieSubstr" />
+      <label for="radioSearchTrieSubstr">二重トライ木部分一致検索</label>
+    </div>
+    <div>
+      <input type="radio" id="radioStaticSearchTrieSubstr" name="searchMethod" value="staticSearchTrieSubstr" />
+      <label for="radioStaticSearchTrieSubstr">静的二重トライ木部分一致検索</label>
+    </div>
+  </fieldset>
+
+  <div>住所: <input type="search" id="textbox" /></div>
+  <div><button type="button">検索時間測定</button></div>
+  <pre id="messageArea"></pre>
+  <div id="trieView">トライ木の図示</div>
+  <div id="refTrieView">参照トライ木の図示</div>
+
+  <script type="module" src="./dist/index.js"></script>
+</body>
+
+</html>

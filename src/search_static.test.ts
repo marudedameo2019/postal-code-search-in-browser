@@ -1,0 +1,121 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { staticSearchContext } from './search_static.js';
+import { serializeToBinary } from './static_common.js';
+import { addTrieNode, createReferenceTrie, createRootNode } from './trie.js';
+import { convertToStatic } from './static_conv.js';
+
+// テスト用の簡易的な Trie 構築ヘルパー関数
+const buildTestTrieData = () => {
+    const root = createRootNode<number>();
+    addTrieNode(root, "東京都", 1000000);
+    addTrieNode(root, "東京23区", 1000001);
+    addTrieNode(root, "大阪府", 5300000);
+    const refTrie = createReferenceTrie(root);
+    const { serialize } = convertToStatic(root, refTrie);
+    const [fullstring, fullnumbers] = serialize();
+    return { fullstring, fullnumbers };
+};
+
+describe('staticSearchContext', () => {
+    it('should return search functions', async () => {
+        const { fullstring, fullnumbers } = buildTestTrieData();
+        const binary = serializeToBinary(fullnumbers, fullstring);
+
+        // fetch をモックする
+        const originalFetch = global.fetch;
+        global.fetch = async (url: string | URL | Request) => {
+            return {
+                ok: true,
+                arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                status: 200,
+                statusText: 'OK'
+            } as Response;
+        };
+
+        try {
+            const context = await staticSearchContext('http://example.com/data.bin');
+
+            assert.ok(typeof context.staticSearchTrieRoot === 'function');
+            assert.ok(typeof context.staticSearchTrieSubstr === 'function');
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it('staticSearchTrieRoot should find exact prefix matches', async () => {
+        const { fullstring, fullnumbers } = buildTestTrieData();
+        const binary = serializeToBinary(fullnumbers, fullstring);
+
+        const originalFetch = global.fetch;
+        global.fetch = async (url: string | URL | Request) => {
+            return {
+                ok: true,
+                arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                status: 200,
+                statusText: 'OK'
+            } as Response;
+        };
+
+        try {
+            const context = await staticSearchContext('http://example.com/data.bin');
+
+            // "東京都" で検索
+            const resultsRoot = context.staticSearchTrieRoot("東京都", 10);
+            assert.strictEqual(resultsRoot.length, 1);
+            assert.ok(resultsRoot[0].includes("1000000"));
+            assert.ok(resultsRoot[0].includes("東京都"));
+
+            // "東京" で検索 (完全一致するノードがない場合、部分一致候補や子ノードを探すロジックが働く)
+            // 上記の簡易データでは "東京" というキーは存在しないため、
+            // ロジック次第では空または部分的な一致になる可能性があります。
+            // ここでは明確に存在する "東京都" の検索結果を検証します。
+
+            // "大阪府" で検索
+            const resultsOsaka = context.staticSearchTrieRoot("大阪府", 10);
+            assert.strictEqual(resultsOsaka.length, 1);
+            assert.ok(resultsOsaka[0].includes("5300000"));
+            assert.ok(resultsOsaka[0].includes("大阪府"));
+
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it('staticSearchTrieSubstr should find substring matches', async () => {
+        const { fullstring, fullnumbers } = buildTestTrieData();
+        const binary = serializeToBinary(fullnumbers, fullstring);
+
+        const originalFetch = global.fetch;
+        global.fetch = async (url: string | URL | Request) => {
+            return {
+                ok: true,
+                arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                status: 200,
+                statusText: 'OK'
+            } as Response;
+        };
+
+        try {
+            const context = await staticSearchContext('http://example.com/data.bin');
+
+            // "東京" を含む検索
+            const resultsSubstr = context.staticSearchTrieSubstr("東京", 10);
+
+            // "東京"はノードになっているはずなので検索文字列に完全一致し、次の両候補が10件まで引っ掛かるのが正解
+            assert.ok(Array.isArray(resultsSubstr));
+            assert.strictEqual(resultsSubstr.length, 2);
+            assert.strictEqual(resultsSubstr.filter(e => e.includes('1000000')).length, 1);
+            assert.strictEqual(resultsSubstr.filter(e => e.includes('1000001')).length, 1);
+
+            // "大阪" を含む検索
+            // "大阪府"がノードになっているので、先頭のノードだけは完全一致しないと部分一致しないため、検索件数は0になる
+            const resultsOsakaSubstr = context.staticSearchTrieSubstr("大阪", 10);
+            assert.ok(Array.isArray(resultsOsakaSubstr));
+            assert.strictEqual(resultsOsakaSubstr.length, 0);
+
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+});

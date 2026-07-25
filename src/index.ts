@@ -37,6 +37,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const textbox = document.getElementById("textbox")! as HTMLInputElement;
     const messageArea = document.getElementById("messageArea")!;
     const fieldset = document.getElementById("fieldset")!;
+    const checksync = document.getElementById("tabsync")! as HTMLInputElement;
 
     try {
         disableInput();
@@ -60,6 +61,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             { f: staticSearchTrieSubstr, name: "静的二重トライ木部分一致検索" },
         ];
         let benchTimes: number[] = Array(fns.length).fill(0);
+        let bc: BroadcastChannel | undefined;
         const getSearchFunc = (): (search: string, max: number) => string[] => {
             const selected = fieldset.querySelector('input[name="searchMethod"]:checked') as HTMLInputElement;
             const defaultFunc = forEachIndefOfWithTable;
@@ -108,7 +110,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             enableInput();
         }
 
-        textbox.addEventListener("input", update);
+        textbox.addEventListener("input", () => {
+            if (bc !== undefined) {
+                bc.postMessage(textbox.value);
+            }
+            update();
+        });
         fieldset.addEventListener("change", update);
         document.querySelector("button")?.addEventListener('click', () => {
             disableInput();
@@ -117,6 +124,20 @@ document.addEventListener("DOMContentLoaded", async () => {
                 update();
                 enableInput();
             }, 0);
+        });
+        checksync.addEventListener('change', () => {
+            if (checksync.checked) {
+                bc = new BroadcastChannel("tab sync");
+                bc.onmessage = (event) => {
+                    if (textbox.value !== event.data) {
+                        textbox.value = event.data;
+                        update();
+                    }
+                };
+            } else {
+                bc?.close();
+                bc = undefined;
+            }
         });
         update();
         enableInput();

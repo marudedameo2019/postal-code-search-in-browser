@@ -8,7 +8,7 @@ import { TRIE_KEY, TRIE_PARENT, TRIE_CHILDREN_IDX, TRIE_CHILDREN_LEN, TRIE_VALUE
  * 住所に対する前方一致検索（`staticSearchTrieRoot`）および部分一致検索（`staticSearchTrieSubstr`）を行うための
  * 関数ペアを返します。
  *
- * @param url トライ木データ（バイナリ形式）が配置されているURL
+ * @param url トライ木データ（バイナリ形式）が配置されているURL(ファイル名で終わること)
  * @returns 検索関数を含むオブジェクト
  *   - `staticSearchTrieRoot`: 前方一致検索を行う関数
  *   - `staticSearchTrieSubstr`: 部分一致検索を行う関数
@@ -32,9 +32,24 @@ export const staticSearchContext = async (url: string): Promise<{
      */
     staticSearchTrieSubstr: (search: string, limit: number) => string[],
 }> => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`ファイル(${url})の取得に失敗しました: ${response.status} ${response.statusText}`)
-    const { numbers: fullnumbers, text: fullstrings } = deserializeFromBinary(new Uint8Array(await response.arrayBuffer()));
+    const canDecompressBrotli = (() => {
+        if (typeof DecompressionStream === 'undefined') return false;
+        try {
+            new (DecompressionStream as any)('brotli');
+            return true;
+        } catch (e) {
+            return false;
+        }
+    })();
+    console.log(`canDecompressBrotli: ${canDecompressBrotli}`);
+    const response = await fetch(url + (canDecompressBrotli ? ".br" : ""));
+    if (!response.ok) throw new Error(`ファイル(${url})の取得に失敗しました: ${response.status} ${response.statusText}`);
+    let rs: Response = response;
+    if (canDecompressBrotli) {
+        const ds = new (DecompressionStream as any)('brotli');
+        rs = new Response(response.body!.pipeThrough(ds));
+    }
+    const { numbers: fullnumbers, text: fullstrings } = deserializeFromBinary(new Uint8Array(await rs.arrayBuffer()));
     const strings = fullstrings;
     let number_idx = 0;
     const stringnumbers_len = fullnumbers[number_idx++];

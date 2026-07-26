@@ -3,7 +3,10 @@ import { createRootNode, addTrieNode, createReferenceTrie } from './trie.js'
 import { measure, measureAsync } from './measure.js'
 import { serializeToBinary } from './static_common.js'
 import { convertToStatic } from './static_conv.js';
-import * as fs from 'fs/promises';
+import fs from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import { PassThrough } from 'node:stream';
+import zlib from 'node:zlib';
 
 /**
  * 数値を指定された桁数でゼロ埋め（またはスペース埋め）した文字列に変換します。
@@ -34,9 +37,23 @@ try {
     // console.log(`export const fullstrings = "${fullstrings}";`);
     // console.log(`export const fullnumbers: number[] = [${fullnumbers}];`);
 
-    console.error("data.binに出力中…")
-    await fs.writeFile("data.bin", serializeToBinary(fullnumbers, fullstrings));
-    console.error("data.binに出力しました")
+    await (async () => {
+        console.error("data.bin, data.bin.brに出力中…")
+        const pass = new PassThrough();
+        await Promise.all([
+            pipeline(
+                [serializeToBinary(fullnumbers, fullstrings)],
+                pass,
+                fs.createWriteStream("data.bin")
+            ),
+            pipeline(
+                pass,
+                zlib.createBrotliCompress(),
+                fs.createWriteStream("data.bin.br"),
+            )
+        ]);
+        console.error("data.bin, data.bin.brに出力しました")
+    })();
 }
 catch (e) {
     console.error('エラーが発生しました:', e);

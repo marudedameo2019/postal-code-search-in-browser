@@ -5,7 +5,7 @@ import { serializeToBinary } from './static_common.js';
 import { addTrieNode, createReferenceTrie, createRootNode } from './trie.js';
 import { convertToStatic } from './static_conv.js';
 import zlib from 'node:zlib';
-import {Readable} from 'node:stream';
+import { Readable } from 'node:stream';
 
 // テスト用の簡易的な Trie 構築ヘルパー関数
 const buildTestTrieData = () => {

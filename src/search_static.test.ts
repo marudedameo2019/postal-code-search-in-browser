@@ -4,6 +4,8 @@ import { staticSearchContext } from './search_static.js';
 import { serializeToBinary } from './static_common.js';
 import { addTrieNode, createReferenceTrie, createRootNode } from './trie.js';
 import { convertToStatic } from './static_conv.js';
+import zlib from 'node:zlib';
+import {Readable} from 'node:stream';
 
 // テスト用の簡易的な Trie 構築ヘルパー関数
 const buildTestTrieData = () => {
@@ -28,6 +30,7 @@ describe('staticSearchContext', () => {
             return {
                 ok: true,
                 arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                body: Readable.toWeb(Readable.from([binary]).pipe(new zlib.BrotliCompress())),
                 status: 200,
                 statusText: 'OK'
             } as Response;
@@ -52,6 +55,7 @@ describe('staticSearchContext', () => {
             return {
                 ok: true,
                 arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                body: Readable.toWeb(Readable.from([binary]).pipe(new zlib.BrotliCompress())),
                 status: 200,
                 statusText: 'OK'
             } as Response;
@@ -91,6 +95,7 @@ describe('staticSearchContext', () => {
             return {
                 ok: true,
                 arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                body: Readable.toWeb(Readable.from([binary]).pipe(new zlib.BrotliCompress())),
                 status: 200,
                 statusText: 'OK'
             } as Response;

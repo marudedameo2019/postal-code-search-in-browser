@@ -13,10 +13,10 @@
     "forceConsistentCasingInFileNames": true,
     "target": "ES2025",
     // "target": "esnext",
-    "types": [],
+    // "types": [],
     // For nodejs:
     // "lib": ["esnext"],
-    // "types": ["node"],
+    "types": ["node"],
     // and npm install -D @types/node
 
     // Other Outputs

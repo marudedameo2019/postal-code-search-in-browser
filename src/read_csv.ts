@@ -1,11 +1,11 @@
-import Papa from 'papaparse';
+import { createCsvParser } from 'csv-pipe';
 import { type Addr2PostalCodeRow } from './table.js'
 
 const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
 const step = (table: Addr2PostalCodeRow[]) => {
-    return (row: Papa.ParseStepResult<string[]>) => {
+    return (row: string[]) => {
         try {
-            const data: string[] = row.data;
+            const data = row;
 
             // 必要なインデックスが存在するか確認 (0-indexed: 2, 6, 7, 8)
             if (data.length < 9) {
@@ -44,25 +44,25 @@ const step = (table: Addr2PostalCodeRow[]) => {
 export const readCSV = async (url: string, download: boolean = true): Promise<Addr2PostalCodeRow[]> => {
     return new Promise(async (resolve, reject) => {
         const table: Addr2PostalCodeRow[] = [];
+        const parseRow = step(table);
         try {
             if (isBrowser) {
-                Papa.parse<string[]>(url, {
-                    download: true,
-                    skipEmptyLines: true,
-                    step: step(table),
-                    complete: () => resolve(table),
-                    error: e => reject(e),
-                });
+                const response = await fetch(url);
+                if (!response.ok) {
+                    reject(`HTTP ERROR!(${response.status}): ${response.statusText}`);
+                } else {
+                    for await (const record of createCsvParser<string[]>({ header: false }).stream(response.body!)) {
+                        parseRow(record);
+                    }
+                    resolve(table);
+                }
             } else {
                 const fs = await import('fs');
-                const nodeStream = fs.createReadStream(url, 'utf8');
-                nodeStream.on('error', (err) => reject(err));
-                Papa.parse<string[]>(nodeStream, {
-                    skipEmptyLines: true,
-                    step: step(table),
-                    complete: () => resolve(table),
-                    error: e => reject(e),
-                });
+                await using nodeStream = fs.createReadStream(url, 'utf8');
+                for await (const record of createCsvParser<string[]>({ header: false }).stream(nodeStream)) {
+                    parseRow(record);
+                }
+                resolve(table);
             }
         } catch (fatalError) {
             reject(fatalError);

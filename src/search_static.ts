@@ -1,5 +1,6 @@
 import { toStringPostalCodeAndAddr } from './table.js'
 import { TRIE_KEY, TRIE_PARENT, TRIE_CHILDREN_IDX, TRIE_CHILDREN_LEN, TRIE_VALUE, TRIE_NUMBERS, REFTRIE_KEY, REFTRIE_PARENT, REFTRIE_CHILDREN_IDX, REFTRIE_CHILDREN_LEN, REFTRIE_REF_IDX, REFTRIE_REF_LEN, REFTRIE_NUMBERS, UINT32_NAN, deserializeFromBinary } from './static_common.js'
+import { canDecompressBrotli, newDecompressionStreamBrotli } from './brotli.js'
 
 /**
  * 静的なトライ木データを用いた検索コンテキストを生成します。
@@ -32,21 +33,12 @@ export const staticSearchContext = async (url: string): Promise<{
      */
     staticSearchTrieSubstr: (search: string, limit: number) => string[],
 }> => {
-    const canDecompressBrotli = (() => {
-        if (typeof DecompressionStream === 'undefined') return false;
-        try {
-            new (DecompressionStream as any)('brotli');
-            return true;
-        } catch (e) {
-            return false;
-        }
-    })();
     console.log(`canDecompressBrotli: ${canDecompressBrotli}`);
     const response = await fetch(url + (canDecompressBrotli ? ".br" : ""));
     if (!response.ok) throw new Error(`ファイル(${url})の取得に失敗しました: ${response.status} ${response.statusText}`);
     let rs: Response = response;
     if (canDecompressBrotli) {
-        const ds = new (DecompressionStream as any)('brotli');
+        const ds = newDecompressionStreamBrotli();
         rs = new Response(response.body!.pipeThrough(ds));
     }
     const { numbers: fullnumbers, text: fullstrings } = deserializeFromBinary(new Uint8Array(await rs.arrayBuffer()));

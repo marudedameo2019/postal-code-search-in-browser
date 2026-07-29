@@ -8,6 +8,7 @@ import { readCSV } from './read_csv.js'
 import { addView } from './d3_trie_view.js'
 import { staticSearchContext } from './search_static.js'
 import { bench } from './bench.js';
+import { canDecompressBrotli } from './brotli.js'
 
 const disableInput = () => {
     document.querySelectorAll<HTMLInputElement>('input[name="searchMethod"],button').forEach(e => { e.disabled = true; });
@@ -41,7 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
         disableInput();
-        const [table, csvReadTime] = await measureAsync(readCSV, "external/utf_ken_all.csv");
+        const [table, csvReadTime] = await measureAsync(readCSV, "external/utf_ken_all.csv" + (canDecompressBrotli ? ".br" : ""), canDecompressBrotli);
         const trie = createRootNode<number>();
         const [, trieConstructTime] = measure(() => table.forEach(e => addTrieNode(trie, e.address, e.postalCode)));
         const [refTrie, trieIndexConstructTime] = measure(createReferenceTrie, trie);

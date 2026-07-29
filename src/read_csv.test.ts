@@ -5,7 +5,12 @@ import fs from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { createCsvEncoder } from 'csv-pipe';
 import { writeCsv } from 'csv-pipe/node';
+import { canDecompressBrotli } from './brotli.js';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import zlib from 'node:zlib';
 
 const createTempFile = async (callback: (path: string) => Promise<void>) => {
     try {
@@ -101,4 +106,30 @@ describe('readCSV', () => {
         });
     });
 
+    test('brotli圧縮CSVファイルを読み込めること', async () => {
+        if (canDecompressBrotli) {
+            await createTempFile(async (path): Promise<void> => {
+                const mockData: string[][] = [
+                    ['0', '1000001', '1000001', 'dummy', 'dummy', 'dummy', '東京都', '千代田区', '千代田'],
+                    ['1', '5300001', '5300001', 'dummy', 'dummy', 'dummy', '大阪府', '大阪市北区', '梅田'],
+                ];
+                await pipeline(
+                    Readable.from(createCsvEncoder<string[]>({ showHeaders: false }).stream(mockData)),
+                    zlib.createBrotliCompress(),
+                    fs.createWriteStream(path),
+                );
+                const result = await readCSV(path, true);
+                assert.strictEqual(result.length, 2);
+                assert.deepStrictEqual(result[0], {
+                    postalCode: 1000001,
+                    address: '東京都千代田区千代田',
+                });
+                assert.deepStrictEqual(result[1], {
+                    postalCode: 5300001,
+                    address: '大阪府大阪市北区梅田',
+                });
+            });
+        }
+    });
+    canDecompressBrotli
 });

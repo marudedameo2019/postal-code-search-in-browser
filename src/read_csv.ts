@@ -1,5 +1,6 @@
 import { createCsvParser } from 'csv-pipe';
 import { type Addr2PostalCodeRow } from './table.js'
+import { newDecompressionStreamBrotli } from './brotli.js'
 
 const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
 const step = (table: Addr2PostalCodeRow[]) => {
@@ -38,10 +39,11 @@ const step = (table: Addr2PostalCodeRow[]) => {
  * 外部ファイル（utf_ken_all.csv）から住所データを取得し、Addr2PostalCodeRowの配列として返します。
  * 
  * @param url CSVファイルのURL
+ * @param brotli CSVパース前にbrotliを伸張する場合はtrue
  * @returns 郵便番号と住所のペアを含む配列
  * @throws CSVのパースエラーまたはデータ処理中のエラー
  */
-export const readCSV = async (url: string, download: boolean = true): Promise<Addr2PostalCodeRow[]> => {
+export const readCSV = async (url: string, brotli: boolean = false): Promise<Addr2PostalCodeRow[]> => {
     return new Promise(async (resolve, reject) => {
         const table: Addr2PostalCodeRow[] = [];
         const parseRow = step(table);
@@ -51,15 +53,21 @@ export const readCSV = async (url: string, download: boolean = true): Promise<Ad
                 if (!response.ok) {
                     reject(`HTTP ERROR!(${response.status}): ${response.statusText}`);
                 } else {
-                    for await (const record of createCsvParser<string[]>({ header: false }).stream(response.body!)) {
+                    let targetStream: ReadableStream = response.body!;
+                    if (brotli) {
+                        targetStream = targetStream.pipeThrough(newDecompressionStreamBrotli());
+                    }
+                    for await (const record of createCsvParser<string[]>({ header: false }).stream(targetStream)) {
                         parseRow(record);
                     }
                     resolve(table);
                 }
             } else {
                 const fs = await import('fs');
-                await using nodeStream = fs.createReadStream(url, 'utf8');
-                for await (const record of createCsvParser<string[]>({ header: false }).stream(nodeStream)) {
+                const zlib = await import('zlib')
+                await using nodeStream = fs.createReadStream(url);
+                const stream = brotli ? nodeStream.pipe(zlib.createBrotliDecompress()) : nodeStream;
+                for await (const record of createCsvParser<string[]>({ header: false }).stream(stream)) {
                     parseRow(record);
                 }
                 resolve(table);

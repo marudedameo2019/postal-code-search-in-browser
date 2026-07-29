@@ -53,6 +53,13 @@ try {
             )
         ]);
         console.error("data.bin, data.bin.brに出力しました")
+        console.error("external/utf_ken_all.csv.brに出力中…")
+        await pipeline(
+            fs.createReadStream("external/utf_ken_all.csv"),
+            zlib.createBrotliCompress(),
+            fs.createWriteStream("external/utf_ken_all.csv.br"),
+        );
+        console.error("external/utf_ken_all.csv.brに出力しました")
     })();
 }
 catch (e) {

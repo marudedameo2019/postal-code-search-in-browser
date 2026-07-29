@@ -3,4 +3,4 @@ node_modules/
 generated/
 .aider*
 data.bin
-data.bin.br
+*.br

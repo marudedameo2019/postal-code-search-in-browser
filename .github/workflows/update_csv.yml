@@ -37,7 +37,7 @@ jobs:
           if git diff --quiet external/utf_ken_all.csv; then
             echo "変更はありませんでした。"
           else
-            git add utf_ken_all.csv
+            git add external/utf_ken_all.csv
             git commit -m "Auto-update csv [skip ci]"
             git push
           fi

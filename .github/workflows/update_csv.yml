@@ -41,3 +41,9 @@ jobs:
             git commit -m "Auto-update csv [skip ci]"
             git push
           fi
+      - name: Trigger GitHub Pages Deploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # gh CLI を使って workflow_dispatch をトリガーする
+          gh workflow run deploy.yml --ref main

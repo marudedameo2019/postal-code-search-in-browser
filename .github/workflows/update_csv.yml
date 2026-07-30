@@ -1,0 +1,43 @@
+name: Update Postal Code Data
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  
+  # 手動でも実行できるようにする
+  workflow_dispatch:
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write # リポジトリへの書き込み権限を付与
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3'
+
+      - name: Run update script
+        run: python3 scripts/update_csv.py
+
+      - name: Check for changes and commit
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 変更があるか確認
+          git status
+          
+          if git diff --quiet external/utf_ken_all.csv; then
+            echo "変更はありませんでした。"
+          else
+            git add utf_ken_all.csv
+            git commit -m "Auto-update csv [skip ci]"
+            git push
+          fi

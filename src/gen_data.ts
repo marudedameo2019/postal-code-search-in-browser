@@ -38,7 +38,7 @@ try {
     // console.log(`export const fullnumbers: number[] = [${fullnumbers}];`);
 
     await (async () => {
-        console.error("data.bin, data.bin.brに出力中…")
+        console.error("data.bin, data.bin.br, data.bin.gzに出力中…")
         const pass = new PassThrough();
         await Promise.all([
             pipeline(
@@ -50,16 +50,28 @@ try {
                 pass,
                 zlib.createBrotliCompress(),
                 fs.createWriteStream("data.bin.br"),
-            )
+            ),
+            pipeline(
+                pass,
+                zlib.createGzip(),
+                fs.createWriteStream("data.bin.gz"),
+            ),
         ]);
-        console.error("data.bin, data.bin.brに出力しました")
-        console.error("external/utf_ken_all.csv.brに出力中…")
-        await pipeline(
-            fs.createReadStream("external/utf_ken_all.csv"),
-            zlib.createBrotliCompress(),
-            fs.createWriteStream("external/utf_ken_all.csv.br"),
-        );
-        console.error("external/utf_ken_all.csv.brに出力しました")
+        console.error("data.bin, data.bin.br, data.bin.gzに出力しました")
+        console.error("external/utf_ken_all.csv.(br|gz)に出力中…")
+        await Promise.all([
+            pipeline(
+                fs.createReadStream("external/utf_ken_all.csv"),
+                zlib.createBrotliCompress(),
+                fs.createWriteStream("external/utf_ken_all.csv.br"),
+            ),
+            pipeline(
+                fs.createReadStream("external/utf_ken_all.csv"),
+                zlib.createGzip(),
+                fs.createWriteStream("external/utf_ken_all.csv.gz"),
+            ),
+        ]);
+        console.error("external/utf_ken_all.csv.(br|gz)に出力しました")
     })();
 }
 catch (e) {

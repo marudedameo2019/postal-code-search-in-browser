@@ -4,3 +4,4 @@ generated/
 .aider*
 data.bin
 *.br
+*.gz

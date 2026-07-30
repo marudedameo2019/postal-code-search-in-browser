@@ -116,9 +116,9 @@ describe('readCSV', () => {
                 await pipeline(
                     Readable.from(createCsvEncoder<string[]>({ showHeaders: false }).stream(mockData)),
                     zlib.createBrotliCompress(),
-                    fs.createWriteStream(path),
+                    fs.createWriteStream(path + ".br"),
                 );
-                const result = await readCSV(path, true);
+                const result = await readCSV(path + ".br");
                 assert.strictEqual(result.length, 2);
                 assert.deepStrictEqual(result[0], {
                     postalCode: 1000001,
@@ -131,5 +131,28 @@ describe('readCSV', () => {
             });
         }
     });
-    canDecompressBrotli
+
+    test('gzip圧縮CSVファイルを読み込めること', async () => {
+        await createTempFile(async (path): Promise<void> => {
+            const mockData: string[][] = [
+                ['0', '1000001', '1000001', 'dummy', 'dummy', 'dummy', '東京都', '千代田区', '千代田'],
+                ['1', '5300001', '5300001', 'dummy', 'dummy', 'dummy', '大阪府', '大阪市北区', '梅田'],
+            ];
+            await pipeline(
+                Readable.from(createCsvEncoder<string[]>({ showHeaders: false }).stream(mockData)),
+                zlib.createGzip(),
+                fs.createWriteStream(path + ".gz"),
+            );
+            const result = await readCSV(path + ".gz");
+            assert.strictEqual(result.length, 2);
+            assert.deepStrictEqual(result[0], {
+                postalCode: 1000001,
+                address: '東京都千代田区千代田',
+            });
+            assert.deepStrictEqual(result[1], {
+                postalCode: 5300001,
+                address: '大阪府大阪市北区梅田',
+            });
+        });
+    });
 });

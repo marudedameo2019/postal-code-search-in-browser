@@ -34,11 +34,11 @@ export const staticSearchContext = async (url: string): Promise<{
     staticSearchTrieSubstr: (search: string, limit: number) => string[],
 }> => {
     console.log(`canDecompressBrotli: ${canDecompressBrotli}`);
-    const response = await fetch(url + (canDecompressBrotli ? ".br" : ""));
+    const response = await fetch(url + (canDecompressBrotli ? ".br" : ".gz"));
     if (!response.ok) throw new Error(`ファイル(${url})の取得に失敗しました: ${response.status} ${response.statusText}`);
     let rs: Response = response;
     if (canDecompressBrotli) {
-        const ds = newDecompressionStreamBrotli();
+        const ds = canDecompressBrotli ? newDecompressionStreamBrotli() : new DecompressionStream("gzip");
         rs = new Response(response.body!.pipeThrough(ds));
     }
     const { numbers: fullnumbers, text: fullstrings } = deserializeFromBinary(new Uint8Array(await rs.arrayBuffer()));

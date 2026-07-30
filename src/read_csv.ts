@@ -38,12 +38,11 @@ const step = (table: Addr2PostalCodeRow[]) => {
 /**
  * 外部ファイル（utf_ken_all.csv）から住所データを取得し、Addr2PostalCodeRowの配列として返します。
  * 
- * @param url CSVファイルのURL
- * @param brotli CSVパース前にbrotliを伸張する場合はtrue
+ * @param url CSVファイルのURL(".br", ".gz"で終わる場合、brotli/gzip伸長する)
  * @returns 郵便番号と住所のペアを含む配列
  * @throws CSVのパースエラーまたはデータ処理中のエラー
  */
-export const readCSV = async (url: string, brotli: boolean = false): Promise<Addr2PostalCodeRow[]> => {
+export const readCSV = async (url: string): Promise<Addr2PostalCodeRow[]> => {
     return new Promise(async (resolve, reject) => {
         const table: Addr2PostalCodeRow[] = [];
         const parseRow = step(table);
@@ -54,8 +53,10 @@ export const readCSV = async (url: string, brotli: boolean = false): Promise<Add
                     reject(`HTTP ERROR!(${response.status}): ${response.statusText}`);
                 } else {
                     let targetStream: ReadableStream = response.body!;
-                    if (brotli) {
+                    if (url.endsWith(".br")) {
                         targetStream = targetStream.pipeThrough(newDecompressionStreamBrotli());
+                    } else if (url.endsWith(".gz")) {
+                        targetStream = targetStream.pipeThrough(new DecompressionStream('gzip'));
                     }
                     for await (const record of createCsvParser<string[]>({ header: false }).stream(targetStream)) {
                         parseRow(record);
@@ -66,7 +67,9 @@ export const readCSV = async (url: string, brotli: boolean = false): Promise<Add
                 const fs = await import('fs');
                 const zlib = await import('zlib')
                 await using nodeStream = fs.createReadStream(url);
-                const stream = brotli ? nodeStream.pipe(zlib.createBrotliDecompress()) : nodeStream;
+                const stream = url.endsWith(".br")
+                    ? nodeStream.pipe(zlib.createBrotliDecompress())
+                    : (url.endsWith(".gz") ? nodeStream.pipe(zlib.createGunzip()) : nodeStream);
                 for await (const record of createCsvParser<string[]>({ header: false }).stream(stream)) {
                     parseRow(record);
                 }

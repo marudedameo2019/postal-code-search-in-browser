@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
         disableInput();
-        const [table, csvReadTime] = await measureAsync(readCSV, "external/utf_ken_all.csv" + (canDecompressBrotli ? ".br" : ""), canDecompressBrotli);
+        const [table, csvReadTime] = await measureAsync(readCSV, "external/utf_ken_all.csv" + (canDecompressBrotli ? ".br" : ".gz"));
         const trie = createRootNode<number>();
         const [, trieConstructTime] = measure(() => table.forEach(e => addTrieNode(trie, e.address, e.postalCode)));
         const [refTrie, trieIndexConstructTime] = measure(createReferenceTrie, trie);

@@ -123,4 +123,58 @@ describe('staticSearchContext', () => {
             global.fetch = originalFetch;
         }
     });
+
+    it('マジックナンバー不一致の確認', async () => {
+        const { fullstring, fullnumbers } = buildTestTrieData();
+        const binary = serializeToBinary(fullnumbers, fullstring);
+        binary[0] = 0;
+
+        const originalFetch = global.fetch;
+        global.fetch = async (url: string | URL | Request) => {
+            return {
+                ok: true,
+                arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                body: Readable.toWeb(Readable.from([binary]).pipe(new zlib.BrotliCompress())),
+                status: 200,
+                statusText: 'OK'
+            } as Response;
+        };
+
+        try {
+            await assert.rejects(async () => await staticSearchContext('http://example.com/data.bin'),
+            {
+                name: "Error",
+                message: "静的データのファイル内容が正しくありません",
+            })
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    it('マジックナンバー不一致の確認', async () => {
+        const { fullstring, fullnumbers } = buildTestTrieData();
+        const binary = serializeToBinary(fullnumbers, fullstring);
+        binary[12] = 100;
+
+        const originalFetch = global.fetch;
+        global.fetch = async (url: string | URL | Request) => {
+            return {
+                ok: true,
+                arrayBuffer: async () => binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength),
+                body: Readable.toWeb(Readable.from([binary]).pipe(new zlib.BrotliCompress())),
+                status: 200,
+                statusText: 'OK'
+            } as Response;
+        };
+
+        try {
+            await assert.rejects(async () => await staticSearchContext('http://example.com/data.bin'),
+            {
+                name: "Error",
+                message: "静的データのファイルフォーマットバージョンが一致しません"
+            })
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
 });

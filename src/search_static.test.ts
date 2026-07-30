@@ -151,7 +151,7 @@ describe('staticSearchContext', () => {
         }
     });
 
-    it('マジックナンバー不一致の確認', async () => {
+    it('ファイルフォーマットバージョン不一致の確認', async () => {
         const { fullstring, fullnumbers } = buildTestTrieData();
         const binary = serializeToBinary(fullnumbers, fullstring);
         binary[12] = 100;

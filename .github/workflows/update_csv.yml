@@ -16,6 +16,7 @@ jobs:
     
     outputs:
       has_changes: ${{ steps.check-changes.outputs.has_changes }}
+      commit_hash: ${{ steps.check-changes.outputs.commit_hash }}
     
     steps:
       - name: Checkout repository
@@ -45,6 +46,9 @@ jobs:
             git add external/utf_ken_all.csv
             git commit -m "Auto-update csv [skip ci]"
             git push
+            
+            COMMIT_HASH=$(git rev-parse HEAD)
+            echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
             echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
   
@@ -69,8 +73,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: main # ref を追加して、直前にプッシュされた最新の main ブランチを確実に取得する
-
+          ref: ${{ needs.update-data.outputs.commit_hash }}
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

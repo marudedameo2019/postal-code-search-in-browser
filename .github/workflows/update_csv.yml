@@ -68,6 +68,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main # ref を追加して、直前にプッシュされた最新の main ブランチを確実に取得する
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

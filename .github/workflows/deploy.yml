@@ -3,6 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: ["main"] # mainブランチにプッシュされた時に実行（masterの場合は変更してください）
+  # 手動でも実行できるようにする
+  workflow_dispatch:
 
 permissions:
   contents: read

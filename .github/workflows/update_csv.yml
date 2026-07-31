@@ -13,8 +13,6 @@ jobs:
     
     permissions:
       contents: write # リポジトリへの書き込み権限を付与
-      pages: write
-      id-token: write
     
     outputs:
       has_changes: ${{ steps.check-changes.outputs.has_changes }}

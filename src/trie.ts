@@ -96,6 +96,16 @@ export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: TrieNode<T>[]) =>
     }
 }
 
+export const getParentsBaseLength = <T>(t: TrieNode<T>): number => {
+    if (t == null) return 0;
+    let len: number = 0;
+    while (t.parent != null && t.key !== "") {
+        len += t.key.length;
+        t = t.parent;
+    }
+    return len;
+}
+
 /**
  * ノードまでのパスを構成するキー文字列を結合して返します。
  * 

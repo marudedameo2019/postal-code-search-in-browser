@@ -67,8 +67,8 @@ describe('staticSearchContext', () => {
             // "東京都" で検索
             const resultsRoot = context.staticSearchTrieRoot("東京都", 10);
             assert.strictEqual(resultsRoot.length, 1);
-            assert.ok(resultsRoot[0].includes("1000000"));
-            assert.ok(resultsRoot[0].includes("東京都"));
+            assert.ok(resultsRoot[0].postalCode === 1000000);
+            assert.ok(resultsRoot[0].addressCandidate.includes("東京都"));
 
             // "東京" で検索 (完全一致するノードがない場合、部分一致候補や子ノードを探すロジックが働く)
             // 上記の簡易データでは "東京" というキーは存在しないため、
@@ -78,8 +78,8 @@ describe('staticSearchContext', () => {
             // "大阪府" で検索
             const resultsOsaka = context.staticSearchTrieRoot("大阪府", 10);
             assert.strictEqual(resultsOsaka.length, 1);
-            assert.ok(resultsOsaka[0].includes("5300000"));
-            assert.ok(resultsOsaka[0].includes("大阪府"));
+            assert.ok(resultsOsaka[0].postalCode === 5300000);
+            assert.ok(resultsOsaka[0].addressCandidate.includes("大阪府"));
 
         } finally {
             global.fetch = originalFetch;
@@ -110,8 +110,8 @@ describe('staticSearchContext', () => {
             // "東京"はノードになっているはずなので検索文字列に完全一致し、次の両候補が10件まで引っ掛かるのが正解
             assert.ok(Array.isArray(resultsSubstr));
             assert.strictEqual(resultsSubstr.length, 2);
-            assert.strictEqual(resultsSubstr.filter(e => e.includes('1000000')).length, 1);
-            assert.strictEqual(resultsSubstr.filter(e => e.includes('1000001')).length, 1);
+            assert.strictEqual(resultsSubstr.filter(e => e.postalCode === 1000000).length, 1);
+            assert.strictEqual(resultsSubstr.filter(e => e.postalCode === 1000001).length, 1);
 
             // "大阪" を含む検索
             // "大阪府"がノードになっているので、先頭のノードだけは完全一致しないと部分一致しないため、検索件数は0になる
@@ -142,10 +142,10 @@ describe('staticSearchContext', () => {
 
         try {
             await assert.rejects(async () => await staticSearchContext('http://example.com/data.bin'),
-            {
-                name: "Error",
-                message: "静的データのファイル内容が正しくありません",
-            })
+                {
+                    name: "Error",
+                    message: "静的データのファイル内容が正しくありません",
+                })
         } finally {
             global.fetch = originalFetch;
         }
@@ -169,10 +169,10 @@ describe('staticSearchContext', () => {
 
         try {
             await assert.rejects(async () => await staticSearchContext('http://example.com/data.bin'),
-            {
-                name: "Error",
-                message: "静的データのファイルフォーマットバージョンが一致しません"
-            })
+                {
+                    name: "Error",
+                    message: "静的データのファイルフォーマットバージョンが一致しません"
+                })
         } finally {
             global.fetch = originalFetch;
         }

@@ -1,5 +1,5 @@
-import { type TrieNode, searchTrie, getParentsBase } from './trie.js'
-import { toStringPostalCodeAndAddr } from './table.js'
+import { type TrieNode, searchTrie, getParentsBase, getParentsBaseLength } from './trie.js'
+import { toStringPostalCodeAndAddr, type SearchResult } from './table.js'
 
 /**
  * 圧縮トライ木を探索し、部分文字列(ノードから始まるもののみ)を検索する
@@ -17,10 +17,10 @@ import { toStringPostalCodeAndAddr } from './table.js'
  * @param refTrie createReferenceTrie()で得られたリファレンストライ木
  * @param search 検索文字列
  * @param limit 検索件数上限
- * @returns 説明にある内容を返すが、フォーマットについてはtoStringPostalCodeAndAddr()の仕様に基づく。
+ * @returns 説明にある内容を返すが、内訳については郵便番号、住所候補、マッチ部分の3つ。
  */
-export const searchTrieSubstr = (refTrie: TrieNode<TrieNode<number>[]>, search: string, limit: number): string[] => {
-    let r: string[] = [];
+export const searchTrieSubstr = (refTrie: TrieNode<TrieNode<number>[]>, search: string, limit: number): SearchResult[] => {
+    let r: SearchResult[] = [];
 
     let rs = searchTrie(refTrie, search);
     if (rs.index == 0) return [];
@@ -74,12 +74,27 @@ export const searchTrieSubstr = (refTrie: TrieNode<TrieNode<number>[]>, search: 
         .filter(e => e.idx + e.rs.index + e.rs.nextComLen === maxLen)
         .flatMap(e => {
             if (e.rs.nextNode !== undefined) {
-                return [toStringPostalCodeAndAddr(e.rs.nextNode.value, getParentsBase(e.rs.nextNode))];
+                const baseIndex = getParentsBaseLength(e.rs.node) - e.idx - e.rs.index;
+                return [{
+                    postalCode: e.rs.nextNode.value,
+                    addressCandidate: getParentsBase(e.rs.nextNode),
+                    matchRange: [baseIndex, baseIndex + maxLen],
+                } as SearchResult];
             } else if (e.rs.node.children.length > 0) {
+                const baseIndex = getParentsBaseLength(e.rs.node) - e.idx - e.rs.index;
                 return e.rs.node.children.values()
-                    .map(e => toStringPostalCodeAndAddr(e.value, getParentsBase(e)));
+                    .map(elm => ({
+                        postalCode: elm.value,
+                        addressCandidate: getParentsBase(elm),
+                        matchRange: [baseIndex, baseIndex + maxLen],
+                    } as SearchResult));
             } else {
-                return [toStringPostalCodeAndAddr(e.rs.node.value, getParentsBase(e.rs.node))];
+                const baseIndex = getParentsBaseLength(e.rs.node) - e.idx - e.rs.index;
+                return [{
+                    postalCode: e.rs.node.value,
+                    addressCandidate: getParentsBase(e.rs.node),
+                    matchRange: [baseIndex, baseIndex + maxLen],
+                } as SearchResult];
             }
         })
         .take(limit)

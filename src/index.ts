@@ -1,6 +1,6 @@
 import { type TrieNode, createRootNode, addTrieNode, createReferenceTrie } from './trie.js'
 import { measure, measureAsync } from './measure.js'
-import type { Addr2PostalCodeRow } from './table.js'
+import type { Addr2PostalCodeRow, SearchResult } from './table.js'
 import { forEachIndefOf } from './for_each_Indef_of.js'
 import { searchTrieRoot } from './search_trie_root.js'
 import { searchTrieSubstr } from './search_trie_substr.js'
@@ -18,17 +18,9 @@ const enableInput = () => {
     document.querySelectorAll<HTMLInputElement>('input[name="searchMethod"],button').forEach(e => { e.disabled = false; });
 };
 
-const getForEachIndefOf = (table: Addr2PostalCodeRow[]): (search: string, limit: number) => string[] => {
-    return (search: string, limit: number) => forEachIndefOf(table, search, limit);
-}
-
-const getSearchTrieRoot = (trie: TrieNode<number>): (search: string, limit: number) => string[] => {
-    return (search: string, limit: number) => searchTrieRoot(trie, search, limit);
-}
-
-const getSearchTrieSubstr = (refTrie: TrieNode<TrieNode<number>[]>): (search: string, limit: number) => string[] => {
-    return (search: string, limit: number) => searchTrieSubstr(refTrie, search, limit);
-}
+const getForEachIndefOf = (table: Addr2PostalCodeRow[]) => (search: string, limit: number) => forEachIndefOf(table, search, limit);
+const getSearchTrieRoot = (trie: TrieNode<number>) => (search: string, limit: number) => searchTrieRoot(trie, search, limit);
+const getSearchTrieSubstr = (refTrie: TrieNode<TrieNode<number>[]>) => (search: string, limit: number) => searchTrieSubstr(refTrie, search, limit);
 
 const numstr = (n: number, length: number, c: string = " "): string => {
     return n.toFixed(3).padStart(length, c);
@@ -39,6 +31,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const messageArea = document.getElementById("messageArea")!;
     const fieldset = document.getElementById("fieldset")!;
     const checksync = document.getElementById("tabsync")! as HTMLInputElement;
+    const checkhighlight = document.getElementById("highlight")! as HTMLInputElement;
 
     try {
         disableInput();
@@ -63,7 +56,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         ];
         let benchTimes: number[] = Array(fns.length).fill(0);
         let bc: BroadcastChannel | undefined;
-        const getSearchFunc = (): (search: string, max: number) => string[] => {
+        const getSearchFunc = (): (search: string, max: number) => SearchResult[] => {
             const selected = fieldset.querySelector('input[name="searchMethod"]:checked') as HTMLInputElement;
             const defaultFunc = forEachIndefOfWithTable;
             if (selected) {
@@ -88,6 +81,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             const LIMIT = 10
             const searchFunc = getSearchFunc();
             const [searchResult, t] = measure(searchFunc, textbox.value, N);
+            const hightlightstr = checkhighlight.checked ? "**" : "";
             return [
                 `crossOriginIsolated: ${crossOriginIsolated} (falseの場合ブラウザでは高精度タイマは使用不可)`,
                 "",
@@ -101,7 +95,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "",
                 `検索住所文字列: ${textbox.value}`,
                 `検索結果(最大${N}件)`,
-                ...searchResult,
+                ...searchResult.values()
+                    .map(e => {
+                        const postalCode = e.postalCode !== undefined ? String(e.postalCode).padStart(7, '0') : "-------";
+                        return `${postalCode}: ${e.addressCandidate.slice(0, e.matchRange[0])}${hightlightstr}${e.addressCandidate.slice(...e.matchRange)}${hightlightstr}${e.addressCandidate.slice(e.matchRange[1])}`;
+                    }),
             ].join('\n');
         };
 
@@ -140,6 +138,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 bc = undefined;
             }
         });
+        checkhighlight.addEventListener('change', update);
         update();
         enableInput();
     }

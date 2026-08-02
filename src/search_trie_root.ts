@@ -1,5 +1,5 @@
 import { type TrieNode, searchTrie } from './trie.js'
-import { toStringPostalCodeAndAddr } from './table.js'
+import { type SearchResult } from './table.js'
 
 /**
  * トライ木内で指定された検索キーに一致する郵便番号と住所のリストを取得します。
@@ -13,22 +13,36 @@ import { toStringPostalCodeAndAddr } from './table.js'
  * @param trie 検索対象のトライ木（値は郵便番号）
  * @param search 検索するキー文字列（例: 郵便番号の一部、住所の一部など）
  * @param limit 取得する結果の最大件数
- * @returns 郵便番号と住所を組み合わせた文字列の配列。形式は "0000000: 住所" など。
+ * @returns 郵便番号、住所、マッチ部分の配列。
  */
-export const searchTrieRoot = (trie: TrieNode<number>, search: string, limit: number): string[] => {
+export const searchTrieRoot = (trie: TrieNode<number>, search: string, limit: number): SearchResult[] => {
     const rs = searchTrie(trie, search);
     const base = search.slice(0, rs.index);
-    let r: string[] = [];
+    let r: SearchResult[];
     if (rs.nextNode != null) {
-        r = [toStringPostalCodeAndAddr(rs.nextNode.value, `${base}${rs.nextNode.key}`)];
+        r = [{
+            postalCode: rs.nextNode.value,
+            addressCandidate: `${base}${rs.nextNode.key}`,
+            matchRange: [0, base.length + rs.nextComLen]
+        }];
     } else if (rs.index > 0) {
         const children = rs.node.children;
         const max: number = children.length > limit ? limit : children.length;
         if (max > 0) {
-            r = children.values().take(max).map(e => toStringPostalCodeAndAddr(e.value, `${base}${e.key}`)).toArray();
+            r = children.values().take(max).map(e => ({
+                postalCode: e.value,
+                addressCandidate: `${base}${e.key}`,
+                matchRange: [0, base.length],
+            } as SearchResult)).toArray();
         } else {
-            r = [toStringPostalCodeAndAddr(rs.node.value, search)];
+            r = [{
+                postalCode: rs.node.value,
+                addressCandidate: search,
+                matchRange: [0, search.length],
+            }];
         }
+    } else {
+        r = [];
     }
     return r;
 }

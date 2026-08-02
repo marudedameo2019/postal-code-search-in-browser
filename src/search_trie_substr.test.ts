@@ -2,6 +2,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { createRootNode, addTrieNode, createReferenceTrie, type TrieNode } from './trie.js';
 import { searchTrieSubstr } from './search_trie_substr.js';
+import type { SearchResult } from './table.js';
 
 // テスト用の簡易的な住所データを定義
 // 実際のプロジェクトでは外部CSVから読み込むが、ユニットテストでは固定データを使う
@@ -47,30 +48,59 @@ describe('searchTrieSubstr', () => {
         const result = searchTrieSubstr(refTrie, '千代田区', 10);
 
         assert.ok(result.length === 5);
-        result.forEach(addr => {
-            assert.ok(addr.includes('千代田区'));
+        result.forEach(rs => {
+            assert.ok(rs.addressCandidate.includes('千代田区'));
         });
 
         // 特定の住所が含まれていることを確認
-        const expectedAddr = '1000001: 東京都千代田区千代田';
-        assert.ok(result.includes(expectedAddr), `Expected result to include '${expectedAddr}'`);
+        const expectedAddr = '東京都千代田区千代田';
+        assert.ok(result.filter(e => e.addressCandidate.includes(expectedAddr) && e.postalCode === 1000001).length === 1, `Expected result to include '${expectedAddr}'`);
 
         // 重複がないことを確認
         const uniqueResults = [...new Set(result)];
         assert.strictEqual(result.length, uniqueResults.length, 'Results should be unique');
 
         // 期待される結果のセットと一致していることを厳密に確認
-        const expectedAddresses = [
-            '1000001: 東京都千代田区千代田',
-            '1000002: 東京都千代田区皇居外苑',
-            '1000011: 東京都千代田区永田町',
-            '1000013: 東京都千代田区有楽町',
-            '1020081: 東京都千代田区富士見',
+        const expectedAddresses: SearchResult[] = [
+            {
+                postalCode: 1000001,
+                addressCandidate: '東京都千代田区千代田',
+                matchRange: [3, 7],
+            },
+            {
+                postalCode: 1000002,
+                addressCandidate: '東京都千代田区皇居外苑',
+                matchRange: [3, 7],
+            },
+            {
+                postalCode: 1000011,
+                addressCandidate: '東京都千代田区永田町',
+                matchRange: [3, 7],
+            },
+            {
+                postalCode: 1000013,
+                addressCandidate: '東京都千代田区有楽町',
+                matchRange: [3, 7],
+            },
+            {
+                postalCode: 1020081,
+                addressCandidate: '東京都千代田区富士見',
+                matchRange: [3, 7],
+            },
         ];
 
         // 結果のセットが期待されるセットと一致するか確認（順序は問わないため、両方をソートして比較）
-        const sortedResult = [...result].sort();
-        const sortedExpected = [...expectedAddresses].sort();
+        const SearchResultOrdeyByPostalCode = (a: SearchResult, b: SearchResult) => {
+            if (a.postalCode === undefined) {
+                if (b.postalCode === undefined) return 0;
+                return -1;
+            } else {
+                if (b.postalCode === undefined) return 1;
+                return a.postalCode - b.postalCode;
+            }
+        };
+        const sortedResult = [...result].sort(SearchResultOrdeyByPostalCode);
+        const sortedExpected = [...expectedAddresses].sort(SearchResultOrdeyByPostalCode);
         assert.deepStrictEqual(sortedResult, sortedExpected, 'Results should exactly match the expected addresses');
     });
 
@@ -89,8 +119,12 @@ describe('searchTrieSubstr', () => {
 
         // 実際の出力: ['-------: 東京都千代田区', '-------: 東京都港区']
         assert.strictEqual(result.length, 2);
-        assert.strictEqual(result[0], "-------: 東京都千代田区");
-        assert.strictEqual(result[1], "-------: 東京都港区");
+        assert.strictEqual(result[0].postalCode, undefined);
+        assert.strictEqual(result[0].addressCandidate, "東京都千代田区");
+        assert.deepStrictEqual(result[0].matchRange, [0, 3]);
+        assert.strictEqual(result[1].postalCode, undefined);
+        assert.strictEqual(result[1].addressCandidate, "東京都港区");
+        assert.deepStrictEqual(result[1].matchRange, [0, 3]);
     });
 
     // 検索文字列がノード境界で完全に一致する場合のテスト
@@ -100,7 +134,9 @@ describe('searchTrieSubstr', () => {
 
         assert.ok(result.length === 1);
         // ノードが'千代田' で始まる住所だけが返ってくるべき
-        assert.strictEqual(result[0], '1000001: 東京都千代田区千代田');
+        assert.strictEqual(result[0].postalCode, 1000001);
+        assert.strictEqual(result[0].addressCandidate, '東京都千代田区千代田');
+        assert.deepStrictEqual(result[0].matchRange, [7, 10]);
     });
 
     // limit パラメータが正しく機能し、返される結果の数が指定数を超えないことを確認
@@ -118,8 +154,12 @@ describe('searchTrieSubstr', () => {
         {
             const result = searchTrieSubstr(refTrie, '千代田区', 2);
             assert.strictEqual(result.length, 2);
-            assert.strictEqual(result[0], "1000001: 東京都千代田区千代田");
-            assert.strictEqual(result[1], "1020081: 東京都千代田区富士見");
+            assert.strictEqual(result[0].postalCode, 1000001);
+            assert.strictEqual(result[0].addressCandidate, "東京都千代田区千代田");
+            assert.deepStrictEqual(result[0].matchRange, [3, 7]);
+            assert.strictEqual(result[1].postalCode, 1020081);
+            assert.strictEqual(result[1].addressCandidate, "東京都千代田区富士見");
+            assert.deepStrictEqual(result[1].matchRange, [3, 7]);
         }
     });
 

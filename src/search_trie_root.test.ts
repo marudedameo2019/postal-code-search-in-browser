@@ -23,7 +23,8 @@ describe('searchTrieRoot', () => {
         const result = searchTrieRoot(trie, '東京都', 10);
 
         assert.strictEqual(result.length, 1);
-        assert.strictEqual(result[0], "1000000: 東京都");
+        assert.strictEqual(result[0].postalCode, 1000000);
+        assert.strictEqual(result[0].addressCandidate, "東京都");
     });
 
     it('部分一致でノードが存在しない場合、最長一致したノードの候補を返す', () => {

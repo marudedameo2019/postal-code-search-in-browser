@@ -1,4 +1,4 @@
-import { toStringPostalCodeAndAddr } from './table.js'
+import { toStringPostalCodeAndAddr, type SearchResult } from './table.js'
 import { TRIE_KEY, TRIE_PARENT, TRIE_CHILDREN_IDX, TRIE_CHILDREN_LEN, TRIE_VALUE, TRIE_NUMBERS, REFTRIE_KEY, REFTRIE_PARENT, REFTRIE_CHILDREN_IDX, REFTRIE_CHILDREN_LEN, REFTRIE_REF_IDX, REFTRIE_REF_LEN, REFTRIE_NUMBERS, UINT32_NAN, deserializeFromBinary } from './static_common.js'
 import { canDecompressBrotli, newDecompressionStreamBrotli } from './brotli.js'
 
@@ -20,18 +20,18 @@ export const staticSearchContext = async (url: string): Promise<{
      *
      * @param search 検索対象の文字列（住所の一部）
      * @param limit 返す結果の最大件数
-     * @returns フォーマットされた「郵便番号: 住所」文字列の配列
+     * @returns 郵便番号, 住所候補、マッチ部分の配列
      */
-    staticSearchTrieRoot: (search: string, limit: number) => string[],
+    staticSearchTrieRoot: (search: string, limit: number) => SearchResult[],
     /**
      * 指定された文字列を含む（部分一致）郵便番号と住所を検索します。
      * 最長一致する結果を優先して返します。
      *
      * @param search 検索対象の文字列（住所の一部）
      * @param limit 返す結果の最大件数
-     * @returns フォーマットされた「郵便番号: 住所」文字列の配列
+     * @returns 郵便番号, 住所候補、マッチ部分の配列
      */
-    staticSearchTrieSubstr: (search: string, limit: number) => string[],
+    staticSearchTrieSubstr: (search: string, limit: number) => SearchResult[],
 }> => {
     console.log(`canDecompressBrotli: ${canDecompressBrotli}`);
     const response = await fetch(url + (canDecompressBrotli ? ".br" : ".gz"));
@@ -123,12 +123,12 @@ export const staticSearchContext = async (url: string): Promise<{
      *
      * @param search 検索対象の文字列（郵便番号または住所の一部）
      * @param limit 返す結果の最大件数
-     * @returns フォーマットされた「郵便番号: 住所」文字列の配列
+     * @returns 郵便番号、住所候補、マッチ部分
      */
-    const staticSearchTrieRoot = (search: string, limit: number): string[] => {
+    const staticSearchTrieRoot = (search: string, limit: number): SearchResult[] => {
         const [target, index, nextNode, nextComLen] = searchTrie(trie, TRIE_NUMBERS, 0, search);
         const base = search.slice(0, index);
-        let r: string[] = [];
+        let r: SearchResult[] = [];
         if (nextNode !== UINT32_NAN) {
             const nextNode_value_tmp = trie[nextNode * TRIE_NUMBERS + TRIE_VALUE];
             const nextNode_value = nextNode_value_tmp === UINT32_NAN ? undefined : nextNode_value_tmp;
@@ -136,7 +136,12 @@ export const staticSearchContext = async (url: string): Promise<{
             const nextNode_key_idx = stringnumbders[nextNode_key * 2];
             const nextNode_key_len = stringnumbders[nextNode_key * 2 + 1];
             const nextNode_key_str = strings.slice(nextNode_key_idx, nextNode_key_idx + nextNode_key_len)
-            r = [toStringPostalCodeAndAddr(nextNode_value, `${base}${nextNode_key_str}`)];
+            const addr = `${base}${nextNode_key_str}`;
+            r = [{
+                postalCode: nextNode_value,
+                addressCandidate: addr,
+                matchRange: [0, base.length + nextComLen],
+            } as SearchResult];
         } else if (index > 0) {
             const children_idx = trie[target * TRIE_NUMBERS + TRIE_CHILDREN_IDX];
             const children_len = trie[target * TRIE_NUMBERS + TRIE_CHILDREN_LEN]
@@ -150,12 +155,21 @@ export const staticSearchContext = async (url: string): Promise<{
                     const key_idx = stringnumbders[key * 2];
                     const key_len = stringnumbders[key * 2 + 1];
                     const key_str = strings.slice(key_idx, key_idx + key_len);
-                    return toStringPostalCodeAndAddr(value, `${base}${key_str}`)
+                    const addr = `${base}${key_str}`;
+                    return {
+                        postalCode: value,
+                        addressCandidate: addr,
+                        matchRange: [0, base.length],
+                    } as SearchResult;
                 }).toArray();
             } else {
                 const value_tmp = trie[target * TRIE_NUMBERS + TRIE_VALUE];
                 const value = value_tmp === UINT32_NAN ? undefined : value_tmp;
-                r = [toStringPostalCodeAndAddr(value, search)];
+                r = [{
+                    postalCode: value,
+                    addressCandidate: search,
+                    matchRange: [0, search.length],
+                }];
             }
         }
         return r;
@@ -197,8 +211,8 @@ export const staticSearchContext = async (url: string): Promise<{
      * @param limit 返す結果の最大件数
      * @returns フォーマットされた「郵便番号: 住所」文字列の配列
      */
-    const staticSearchTrieSubstr = (search: string, limit: number): string[] => {
-        let r: string[] = [];
+    const staticSearchTrieSubstr = (search: string, limit: number): SearchResult[] => {
+        let r: SearchResult[] = [];
 
         let [target, index, nextNode, nextComLen] = searchTrie(reftrie, REFTRIE_NUMBERS, 0, search);
         if (index === 0) return [];
@@ -264,7 +278,15 @@ export const staticSearchContext = async (url: string): Promise<{
                 if (e.rs[2] !== UINT32_NAN) {
                     const nextNode_value_tmp = trie[e.rs[2] * TRIE_NUMBERS + TRIE_VALUE];
                     const nextNode_value = nextNode_value_tmp === UINT32_NAN ? undefined : nextNode_value_tmp;
-                    return [toStringPostalCodeAndAddr(nextNode_value, getStataicParentsBase(trie, TRIE_NUMBERS, e.rs[2]))];
+                    const addr = getStataicParentsBase(trie, TRIE_NUMBERS, e.rs[2]);
+                    const nextNode_key = trie[e.rs[2] * TRIE_NUMBERS + TRIE_KEY];
+                    const nextNode_key_len = stringnumbders[nextNode_key * 2 + 1];
+                    const baselen = addr.length - e.idx - e.rs[1] - nextNode_key_len;
+                    return [{
+                        postalCode: nextNode_value,
+                        addressCandidate: addr,
+                        matchRange: [baselen, baselen + maxLen],
+                    } as SearchResult];
                 } else {
                     const node_value_tmp = trie[e.rs[0] * TRIE_NUMBERS + TRIE_VALUE];
                     const node_value = node_value_tmp === UINT32_NAN ? undefined : node_value_tmp;
@@ -272,14 +294,27 @@ export const staticSearchContext = async (url: string): Promise<{
                     if (node_children_length > 0) {
                         const node_children_idx = trie[e.rs[0] * TRIE_NUMBERS + TRIE_CHILDREN_IDX];
                         return numbers.slice(node_children_idx, node_children_idx + node_children_length).values()
-                            .map(e => {
-                                const value_tmp = trie[e * TRIE_NUMBERS + TRIE_VALUE];
+                            .map(elm => {
+                                const value_tmp = trie[elm * TRIE_NUMBERS + TRIE_VALUE];
                                 const value = value_tmp === UINT32_NAN ? undefined : value_tmp;
-                                return toStringPostalCodeAndAddr(value, getStataicParentsBase(trie, TRIE_NUMBERS, e));
+                                const addr = getStataicParentsBase(trie, TRIE_NUMBERS, elm);
+                                const key = trie[elm * TRIE_NUMBERS + TRIE_KEY];
+                                const key_len = stringnumbders[key * 2 + 1];
+                                const baselen = addr.length - e.idx - e.rs[1] - key_len;
+                                return {
+                                    postalCode: value,
+                                    addressCandidate: addr,
+                                    matchRange: [baselen, baselen + maxLen],
+                                } as SearchResult;
                             });
-
                     } else {
-                        return [toStringPostalCodeAndAddr(node_value, getStataicParentsBase(trie, TRIE_NUMBERS, e.rs[0]))];
+                        const addr = getStataicParentsBase(trie, TRIE_NUMBERS, e.rs[0]);
+                        const baselen = addr.length - e.idx - e.rs[1];
+                        return [{
+                            postalCode: node_value,
+                            addressCandidate: addr,
+                            matchRange: [baselen, baselen + maxLen],
+                        } as SearchResult];
                     }
                 }
             })

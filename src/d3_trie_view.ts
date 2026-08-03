@@ -10,12 +10,12 @@ import * as d3 from "d3";
  * @param height - SVGの高さ（ピクセル）
  */
 export const addView = <T>(trie: TrieNode<T>, selector: string, width: number, height: number): void => {
-    type CollapsibleHierarchyNode = Omit<d3.HierarchyNode<TrieNode<number>>, "children"> & {
+    type CollapsibleHierarchyNode = Omit<d3.HierarchyNode<TrieNode<T>>, "children"> & {
         children?: CollapsibleHierarchyNode[] | undefined;
         _children?: CollapsibleHierarchyNode[] | undefined;
     };
 
-    type CollapsibleHierarchyPointNode = Omit<d3.HierarchyPointNode<TrieNode<number>>, "children"> & {
+    type CollapsibleHierarchyPointNode = Omit<d3.HierarchyPointNode<TrieNode<T>>, "children"> & {
         children?: CollapsibleHierarchyPointNode[] | undefined;
         _children?: CollapsibleHierarchyPointNode[] | undefined;
     };
@@ -135,10 +135,10 @@ export const addView = <T>(trie: TrieNode<T>, selector: string, width: number, h
         // ==========================================
         // 5. リンク（線）の描画
         // ==========================================
-        const linkSelection = zoomGroup.selectAll<SVGPathElement, d3.HierarchyLink<TrieNode<number>>>("path.link")
+        const linkSelection = zoomGroup.selectAll<SVGPathElement, d3.HierarchyLink<TrieNode<T>>>("path.link")
             .data(links, (d) => (d.target as any).id);
 
-        const linkPath = d3.linkHorizontal<unknown, d3.HierarchyPointNode<TrieNode<number>>>()
+        const linkPath = d3.linkHorizontal<unknown, d3.HierarchyPointNode<TrieNode<T>>>()
             .x((d) => d.y)
             .y((d) => d.x);
 

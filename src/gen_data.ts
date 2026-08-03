@@ -40,6 +40,7 @@ try {
     await (async () => {
         console.error("data.bin, data.bin.br, data.bin.gzに出力中…")
         const pass = new PassThrough();
+        pass.setMaxListeners(15);
         await Promise.all([
             pipeline(
                 [serializeToBinary(fullnumbers, fullstrings)],

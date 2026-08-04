@@ -23,7 +23,7 @@ export const searchTrieSubstr = (refTrie: TrieNode<TrieNode<number>[]>, search: 
     let r: SearchResult[] = [];
 
     let rs = searchTrie(refTrie, search);
-    if (rs.index == 0) return [];
+    if (rs.index === 0 && rs.nextComLen === 0) return [];
 
     let idx = rs.index;
     let rsAry: {

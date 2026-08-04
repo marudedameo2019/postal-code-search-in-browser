@@ -169,11 +169,11 @@ describe('searchTrieSubstr', () => {
         assert.deepStrictEqual(result, []);
     });
 
-    // 存在しない文字（または一致するノードがない文字）での検索は空配列を返すことを確認
+    // 存在しない文字（または一致するノードがない文字）でもnextNodeに部分一致するときは検索結果を返すことを確認
     it('単一文字の一致処理', () => {
         const result = searchTrieSubstr(refTrie, '東', 10);
 
-        assert.ok(result.length === 0);
+        assert.ok(result.length === 1);
     });
 
     // 重複する結果が含まれていないか（一意性）を確認

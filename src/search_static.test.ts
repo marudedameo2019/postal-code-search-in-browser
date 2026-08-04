@@ -114,10 +114,10 @@ describe('staticSearchContext', () => {
             assert.strictEqual(resultsSubstr.filter(e => e.postalCode === 1000001).length, 1);
 
             // "大阪" を含む検索
-            // "大阪府"がノードになっているので、先頭のノードだけは完全一致しないと部分一致しないため、検索件数は0になる
+            // "大阪府"がノードになっているので、先頭のノードだけは完全一致しないと部分一致しないことにしていたが、不便なので引っ掛かるようにした
             const resultsOsakaSubstr = context.staticSearchTrieSubstr("大阪", 10);
             assert.ok(Array.isArray(resultsOsakaSubstr));
-            assert.strictEqual(resultsOsakaSubstr.length, 0);
+            assert.strictEqual(resultsOsakaSubstr.length, 1);
 
         } finally {
             global.fetch = originalFetch;

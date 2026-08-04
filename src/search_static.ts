@@ -216,7 +216,7 @@ export const staticSearchContext = async (url: string): Promise<{
 
         // reftrieで検索し、一致した位置まで消費したキーの長さを取得
         let [targetNode, consumedKeyLength, nextCandidateNode, nextComLen] = searchTrie(reftrie, REFTRIE_NUMBERS, 0, search);
-        if (consumedKeyLength === 0) return [];
+        if (consumedKeyLength === 0 && nextComLen === 0) return [];
 
         let idx = consumedKeyLength;
 
@@ -233,7 +233,7 @@ export const staticSearchContext = async (url: string): Promise<{
         // 参照トライノードは起点となる住所トライノードへのインデックスだが、最初の検索で得られたものは最長の参照トライノードだけになる。
         // キー部分が部分文字列として含まれる参照トライノードも住所トライノードの起点として有効なので、部分一致しかしなかった参照トライノードも
         // 起点のみで検索結果になる場合があり、同様に検索結果に加える必要がある。
-        if (nextCandidateNode !== undefined) {
+        if (nextCandidateNode !== UINT32_NAN) {
             let node = nextCandidateNode;
             const node_ref_idx = reftrie[node * REFTRIE_NUMBERS + REFTRIE_REF_IDX];
             const node_ref_len = reftrie[node * REFTRIE_NUMBERS + REFTRIE_REF_LEN];

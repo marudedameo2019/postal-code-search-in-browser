@@ -43,40 +43,43 @@ const step = (table: Addr2PostalCodeRow[]) => {
  * @throws CSVのパースエラーまたはデータ処理中のエラー
  */
 export const readCSV = async (url: string): Promise<Addr2PostalCodeRow[]> => {
-    return new Promise(async (resolve, reject) => {
-        const table: Addr2PostalCodeRow[] = [];
-        const parseRow = step(table);
-        try {
-            if (isBrowser) {
-                const response = await fetch(url);
-                if (!response.ok) {
-                    reject(`HTTP ERROR!(${response.status}): ${response.statusText}`);
-                } else {
-                    let targetStream: ReadableStream = response.body!;
-                    if (url.endsWith(".br")) {
-                        targetStream = targetStream.pipeThrough(newDecompressionStreamBrotli());
-                    } else if (url.endsWith(".gz")) {
-                        targetStream = targetStream.pipeThrough(new DecompressionStream('gzip'));
-                    }
+    const table: Addr2PostalCodeRow[] = [];
+    const parseRow = step(table);
+    try {
+        if (isBrowser) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ERROR!(${response.status}): ${response.statusText}`);
+            } else {
+                let targetStream: ReadableStream = response.body!;
+                if (url.endsWith(".br")) {
+                    targetStream = targetStream.pipeThrough(newDecompressionStreamBrotli());
+                } else if (url.endsWith(".gz")) {
+                    targetStream = targetStream.pipeThrough(new DecompressionStream('gzip'));
+                }
+                
+                try {
                     for await (const record of createCsvParser<string[]>({ header: false }).stream(targetStream)) {
                         parseRow(record);
                     }
-                    resolve(table);
+                } catch(err) {
+                    await response.body?.cancel();
+                    throw err;
                 }
-            } else {
-                const fs = await import('fs');
-                const zlib = await import('zlib')
-                await using nodeStream = fs.createReadStream(url);
-                const stream = url.endsWith(".br")
-                    ? nodeStream.pipe(zlib.createBrotliDecompress())
-                    : (url.endsWith(".gz") ? nodeStream.pipe(zlib.createGunzip()) : nodeStream);
-                for await (const record of createCsvParser<string[]>({ header: false }).stream(stream)) {
-                    parseRow(record);
-                }
-                resolve(table);
             }
-        } catch (fatalError) {
-            reject(fatalError);
+        } else {
+            const fs = await import('fs');
+            const zlib = await import('zlib')
+            await using nodeStream = fs.createReadStream(url);
+            const stream = url.endsWith(".br")
+                ? nodeStream.pipe(zlib.createBrotliDecompress())
+                : (url.endsWith(".gz") ? nodeStream.pipe(zlib.createGunzip()) : nodeStream);
+            for await (const record of createCsvParser<string[]>({ header: false }).stream(stream)) {
+                parseRow(record);
+            }
         }
-    });
+    } catch (fatalError) {
+        throw fatalError;
+    }
+    return table;
 }

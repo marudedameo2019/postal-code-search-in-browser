@@ -183,7 +183,7 @@ export const staticSearchContext = async (url: string): Promise<{
      * @param node 開始ノードのインデックス
      * @returns ルートからのパスを表す文字列
      */
-    const getStataicParentsBase = (trie: number[], numsPerElm: number, node: number): string => {
+    const getStaticParentsBase = (trie: number[], numsPerElm: number, node: number): string => {
         if (node === UINT32_NAN) return "";
         const ary: string[] = [];
         while (true) {
@@ -214,93 +214,108 @@ export const staticSearchContext = async (url: string): Promise<{
     const staticSearchTrieSubstr = (search: string, limit: number): SearchResult[] => {
         let r: SearchResult[] = [];
 
-        let [target, index, nextNode, nextComLen] = searchTrie(reftrie, REFTRIE_NUMBERS, 0, search);
-        if (index === 0) return [];
+        // reftrieで検索し、一致した位置まで消費したキーの長さを取得
+        let [targetNode, consumedKeyLength, nextCandidateNode, nextComLen] = searchTrie(reftrie, REFTRIE_NUMBERS, 0, search);
+        if (consumedKeyLength === 0) return [];
 
-        let idx = index;
-        let rsAry: {
+        let idx = consumedKeyLength;
+
+        // 検索結果を保持する配列
+        // e: 対象となるトライ木のノードインデックス
+        // idx: そのノードに対応する検索文字列内のオフセット（消費済み文字数）
+        // rs: searchTrieの結果 [targetNode, consumedKeyLength, nextCandidateNode, nextComLen]
+        let searchResults: {
             e: number;
             idx: number;
             rs: number[];
         }[] = [];
 
-        if (nextNode !== undefined) {
-            let node = nextNode;
+        // 参照トライノードは起点となる住所トライノードへのインデックスだが、最初の検索で得られたものは最長の参照トライノードだけになる。
+        // キー部分が部分文字列として含まれる参照トライノードも住所トライノードの起点として有効なので、部分一致しかしなかった参照トライノードも
+        // 起点のみで検索結果になる場合があり、同様に検索結果に加える必要がある。
+        if (nextCandidateNode !== undefined) {
+            let node = nextCandidateNode;
             const node_ref_idx = reftrie[node * REFTRIE_NUMBERS + REFTRIE_REF_IDX];
             const node_ref_len = reftrie[node * REFTRIE_NUMBERS + REFTRIE_REF_LEN];
             if (node_ref_len !== 0) { // 共有ノードなだけでvalueがないケースがある
                 const refs = numbers.slice(node_ref_idx, node_ref_idx + node_ref_len);
                 refs.values()
-                    .map(e => {
-                        const e_parent = trie[e * TRIE_NUMBERS + TRIE_PARENT];
+                    .map(resultItem => {
+                        const e_parent = trie[resultItem * TRIE_NUMBERS + TRIE_PARENT];
                         return {
                             e: e_parent,
                             idx: 0,
                             rs: searchTrie(trie, TRIE_NUMBERS, e_parent, search)
                         };
                     })
-                    .forEach(e => rsAry.push(e));
+                    .forEach(resultItem => searchResults.push(resultItem));
             }
         }
 
-        let node = target;
+        // 参照トライノードは起点となる住所トライノードへのインデックスだが、最初の検索で得られたものは最長の参照トライノードだけになる。
+        // キー部分が部分文字列として含まれる参照トライノードも住所トライノードの起点として有効なので、参照トライノードの親ノードからも
+        // 住所トライノードを検索する。
+        let node = targetNode;
         while (stringnumbders[reftrie[node * REFTRIE_NUMBERS + REFTRIE_KEY] * 2 + 1] !== 0) {
             const node_ref_idx = reftrie[node * REFTRIE_NUMBERS + REFTRIE_REF_IDX];
             const node_ref_len = reftrie[node * REFTRIE_NUMBERS + REFTRIE_REF_LEN];
             if (node_ref_len !== 0) { // 共有ノードなだけでvalueがないケースがある
                 const refs = numbers.slice(node_ref_idx, node_ref_idx + node_ref_len);
                 refs.values()
-                    .map(e => {
+                    .map(resultItem => {
                         return {
-                            e: e,
+                            e: resultItem,
                             idx: idx,
-                            rs: searchTrie(trie, TRIE_NUMBERS, e, search.slice(idx))
+                            rs: searchTrie(trie, TRIE_NUMBERS, resultItem, search.slice(idx))
                         };
                     })
-                    .forEach(e => rsAry.push(e));
+                    .forEach(resultItem => searchResults.push(resultItem));
             }
-            idx -= stringnumbders[reftrie[node * REFTRIE_NUMBERS + REFTRIE_KEY] * 2 + 1];
+            const currentKeyLen = stringnumbders[reftrie[node * REFTRIE_NUMBERS + REFTRIE_KEY] * 2 + 1];
+            idx -= currentKeyLen;
             node = reftrie[node * REFTRIE_NUMBERS + REFTRIE_PARENT];
         }
 
-        let maxLen = rsAry.values()
-            .map(e => {
-                //[target, index, nextNode, nextComLen]
-                return e.idx + e.rs[1] + e.rs[3];
+        // 最長の一致長を計算
+        let maxLen = searchResults.values()
+            .map(resultItem => {
+                // [targetNode, consumedKeyLength, nextCandidateNode, nextComLen]
+                return resultItem.idx + resultItem.rs[1] + resultItem.rs[3];
             })
-            .reduce((max, e) => max < e ? e : max, 0);
+            .reduce((max, length) => max < length ? length : max, 0);
 
-        r = rsAry.values()
-            //[target, index, nextNode, nextComLen]
-            .filter(e => e.idx + e.rs[1] + e.rs[3] === maxLen)
-            .flatMap(e => {
-                //[target, index, nextNode, nextComLen]
-                if (e.rs[2] !== UINT32_NAN) {
-                    const nextNode_value_tmp = trie[e.rs[2] * TRIE_NUMBERS + TRIE_VALUE];
+        // 最長の一致を持つ結果のみをフィルタリングし、フォーマット
+        r = searchResults.values()
+            // [targetNode, consumedKeyLength, nextCandidateNode, nextComLen]
+            .filter(resultItem => resultItem.idx + resultItem.rs[1] + resultItem.rs[3] === maxLen)
+            .flatMap(resultItem => {
+                // [targetNode, consumedKeyLength, nextCandidateNode, nextComLen]
+                if (resultItem.rs[2] !== UINT32_NAN) {
+                    const nextNode_value_tmp = trie[resultItem.rs[2] * TRIE_NUMBERS + TRIE_VALUE];
                     const nextNode_value = nextNode_value_tmp === UINT32_NAN ? undefined : nextNode_value_tmp;
-                    const addr = getStataicParentsBase(trie, TRIE_NUMBERS, e.rs[2]);
-                    const nextNode_key = trie[e.rs[2] * TRIE_NUMBERS + TRIE_KEY];
+                    const addr = getStaticParentsBase(trie, TRIE_NUMBERS, resultItem.rs[2]);
+                    const nextNode_key = trie[resultItem.rs[2] * TRIE_NUMBERS + TRIE_KEY];
                     const nextNode_key_len = stringnumbders[nextNode_key * 2 + 1];
-                    const baselen = addr.length - e.idx - e.rs[1] - nextNode_key_len;
+                    const baselen = addr.length - resultItem.idx - resultItem.rs[1] - nextNode_key_len;
                     return [{
                         postalCode: nextNode_value,
                         addressCandidate: addr,
                         matchRange: [baselen, baselen + maxLen],
                     } as SearchResult];
                 } else {
-                    const node_value_tmp = trie[e.rs[0] * TRIE_NUMBERS + TRIE_VALUE];
+                    const node_value_tmp = trie[resultItem.rs[0] * TRIE_NUMBERS + TRIE_VALUE];
                     const node_value = node_value_tmp === UINT32_NAN ? undefined : node_value_tmp;
-                    const node_children_length = trie[e.rs[0] * TRIE_NUMBERS + TRIE_CHILDREN_LEN];
+                    const node_children_length = trie[resultItem.rs[0] * TRIE_NUMBERS + TRIE_CHILDREN_LEN];
                     if (node_children_length > 0) {
-                        const node_children_idx = trie[e.rs[0] * TRIE_NUMBERS + TRIE_CHILDREN_IDX];
+                        const node_children_idx = trie[resultItem.rs[0] * TRIE_NUMBERS + TRIE_CHILDREN_IDX];
                         return numbers.slice(node_children_idx, node_children_idx + node_children_length).values()
                             .map(elm => {
                                 const value_tmp = trie[elm * TRIE_NUMBERS + TRIE_VALUE];
                                 const value = value_tmp === UINT32_NAN ? undefined : value_tmp;
-                                const addr = getStataicParentsBase(trie, TRIE_NUMBERS, elm);
+                                const addr = getStaticParentsBase(trie, TRIE_NUMBERS, elm);
                                 const key = trie[elm * TRIE_NUMBERS + TRIE_KEY];
                                 const key_len = stringnumbders[key * 2 + 1];
-                                const baselen = addr.length - e.idx - e.rs[1] - key_len;
+                                const baselen = addr.length - resultItem.idx - resultItem.rs[1] - key_len;
                                 return {
                                     postalCode: value,
                                     addressCandidate: addr,
@@ -308,8 +323,8 @@ export const staticSearchContext = async (url: string): Promise<{
                                 } as SearchResult;
                             });
                     } else {
-                        const addr = getStataicParentsBase(trie, TRIE_NUMBERS, e.rs[0]);
-                        const baselen = addr.length - e.idx - e.rs[1];
+                        const addr = getStaticParentsBase(trie, TRIE_NUMBERS, resultItem.rs[0]);
+                        const baselen = addr.length - resultItem.idx - resultItem.rs[1];
                         return [{
                             postalCode: node_value,
                             addressCandidate: addr,

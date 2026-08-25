@@ -126,16 +126,24 @@ export const getParentsBase = <T>(ref: TrieNode<T>): string => {
 };
 
 /**
+ * リファレンストライのノード型定義。
+ * 元のTrie木における対応するキーを持つノードの配列を保持します。
+ */
+export type ReferenceNode<T> = TrieNode<TrieNode<T>[]>;
+
+/**
  * 元のTrie木から、各ノードへの参照を持つリファレンストライを作成します。
  * 
- * これは、分割されたノードをまとめるために使用されます。
- * 元のTrie木の全ノードを走査し、同じキーを持つノードをグループ化して管理するための構造体を構築します。
+ * リファレンストライは、本来先頭一致検索しかできないTrie木を途中から検索させるためのインデックスとして機能します。
+ * つまりrootノードから連なる子孫の文字列(各childrenのキー)から、そのノードを引けるインデックスです。
+ * インデックスを作成する際、検索可能とする最低子ノード数を指定すると、分岐の少ないノードを検索できなくすることで
+ * インデックスサイズを若干小さくできます。
  * 
  * @param root 元のTrie木の根ノード
  * @param minChld 中間ノードでリファレンスを生成する最低子ノード数
  * @returns リファレンス用のTrie木。各ノードの値は、元のTrieにおける対応するキーを持つノードの配列です。
  */
-export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): TrieNode<TrieNode<T>[]> => {
+export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): ReferenceNode<T> => {
     const refTrie = createRootNode<TrieNode<T>[]>();
     let total: number = 0;
 
@@ -144,13 +152,7 @@ export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): 
         if (last.children.length > 0 && last.children.length < minChld) return;
 
         ++total;
-        let subary: string[] = [];
-        for (let node = last;
-            node.parent !== undefined && (node === last || (node.children.length > 0 && node.children.length < minChld));
-            node = node.parent) {
-            subary.push(node.key);
-        }
-        const key = subary.reverse().join("");
+        const key = last.key;
 
         // リファレンストライ内で同じキーを持つノードを検索
         const rs = searchTrie(refTrie, key);
@@ -159,10 +161,11 @@ export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): 
             // キーが完全に一致する場合
             if (rs.node.value === undefined) {
                 // 分割によって生成されたノードの場合、新しい配列で初期化
-                rs.node.value = [last];
+                rs.node.value = [last] as TrieNode<T>[];
             } else {
                 // 既存の配列に追加
-                rs.node.value.push(last);
+                const existingArray = rs.node.value as TrieNode<T>[];
+                existingArray.push(last);
             }
         } else {
             // キーが一致しない場合（部分的な一致など）、新規ノードとして追加
@@ -327,6 +330,43 @@ const internalAddTrieNode = <T>(root: TrieNode<T>, remainingKey: string, value: 
 };
 
 /**
+ * 子ノードを分割し、新しい共通ノードを作成する内部ヘルパー関数。
+ * 
+ * この関数は木構造の変更（ノードの分割と再配置）のみを行い、値の設定や新しい子ノードの追加は行いません。
+ * 呼び出し側で、分割後の構造に対して意味的な処理（値の設定など）を行ってください。
+ * 
+ * @param parent 親ノード
+ * @param children 親ノードの子リスト
+ * @param index 分割対象の子ノードのインデックス
+ * @param comLen 共通接頭辞の長さ
+ * @returns 分割後に作成された新しい共通ノード（commonNode）
+ */
+const splitChildAndCreateCommonNode = <T>(
+    parent: TrieNode<T>,
+    children: TrieNode<T>[],
+    index: number,
+    comLen: number
+): TrieNode<T> => {
+    const child = children[index];
+    const prefix = child.key.slice(0, comLen);
+    const suffix = child.key.slice(comLen);
+
+    const commonNode: TrieNode<T> = {
+        key: prefix,
+        parent: parent,
+        children: [child],
+        value: undefined,
+    };
+
+    child.key = suffix;
+    child.parent = commonNode;
+
+    children[index] = commonNode;
+    
+    return commonNode;
+};
+
+/**
  * 子ノードを分割し、新しい共通ノードを作成して値を設定するケース。
  * remainingKey が child.key のプレフィックスの場合に使用されます。
  * 
@@ -341,23 +381,10 @@ const splitChildNode = <T>(
     comLen: number,
     value: T
 ): void => {
-    const child = children[index];
-    const suffix = child.key.slice(comLen);
-
-    const commonNode: TrieNode<T> = {
-        key: child.key.slice(0, comLen), // remainingKey と同じ長さ
-        parent: parent,
-        children: [child],
-        value: undefined,
-    };
-
-    child.key = suffix;
-    child.parent = commonNode;
-
+    const commonNode = splitChildAndCreateCommonNode(parent, children, index, comLen);
+    
     // 値は分割された新しいノード（プレフィックス部分）に設定
     commonNode.value = value;
-
-    children[index] = commonNode;
 };
 
 /**
@@ -375,19 +402,7 @@ const splitChildNodeForPartialMatch = <T>(
     remainingKey: string,
     value: T
 ): void => {
-    const child = children[index];
-    const prefix = child.key.slice(0, comLen);
-    const suffix = child.key.slice(comLen);
-
-    const commonNode: TrieNode<T> = {
-        key: prefix,
-        parent: parent,
-        children: [child],
-        value: undefined,
-    };
-
-    child.key = suffix;
-    child.parent = commonNode;
+    const commonNode = splitChildAndCreateCommonNode(parent, children, index, comLen);
 
     const newKey = remainingKey.slice(comLen);
 
@@ -404,6 +419,4 @@ const splitChildNodeForPartialMatch = <T>(
         // remainingKey が prefix と完全に一致する場合（理論的には comLen === remainingKey.length のケースと重複するが、安全のため）
         commonNode.value = value;
     }
-
-    children[index] = commonNode;
 };

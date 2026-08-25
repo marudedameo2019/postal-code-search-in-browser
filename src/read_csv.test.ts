@@ -74,7 +74,8 @@ describe('readCSV', () => {
     test('データが不足している行はスキップされること', async () => {
         // インデックス8まで存在しないケース
         await createTempFile(async (path): Promise<void> => {
-            fs.createWriteStream(path).write('0,1000001,1000001,dummy,dummy,dummy,東京都,千代田区,千代田\n1,5300001,5300001,dummy,dummy,dummy,大阪府,大阪市北区')
+            fs.createWriteStream(path).write('0,1000001,1000001,dummy,dummy,dummy,東京都,千代田区,千代田\n1,5300001,5300001,dummy,dummy,dummy,大阪府,大阪市北区');
+            await new Promise(resolve => setTimeout(resolve, 1000));
             const result = await readCSV(path);
             assert.strictEqual(result.length, 1);
             assert.deepStrictEqual(result[0], {

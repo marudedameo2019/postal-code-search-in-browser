@@ -82,12 +82,20 @@ export const searchTrieSubstr = (refTrie: TrieNode<TrieNode<number>[]>, search: 
                 } as SearchResult];
             } else if (e.rs.node.children.length > 0) {
                 const baseIndex = getParentsBaseLength(e.rs.node) - e.idx - e.rs.index;
-                return e.rs.node.children.values()
-                    .map(elm => ({
-                        postalCode: elm.value,
-                        addressCandidate: getParentsBase(elm),
+                const result = [] as SearchResult[];
+                if (e.rs.node.value !== undefined) {
+                    result.push({
+                        postalCode: e.rs.node.value,
+                        addressCandidate: getParentsBase(e.rs.node),
                         matchRange: [baseIndex, baseIndex + maxLen],
-                    } as SearchResult));
+                    } as SearchResult);
+                }
+                e.rs.node.children.values().forEach(elm => result.push({
+                    postalCode: elm.value,
+                    addressCandidate: getParentsBase(elm),
+                    matchRange: [baseIndex, baseIndex + maxLen],
+                } as SearchResult));
+                return result;
             } else {
                 const baseIndex = getParentsBaseLength(e.rs.node) - e.idx - e.rs.index;
                 return [{

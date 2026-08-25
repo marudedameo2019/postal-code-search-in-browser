@@ -14,6 +14,10 @@ const testAddresses = [
     { postalCode: 1020081, addr: '東京都千代田区富士見' },
     { postalCode: 1050001, addr: '東京都港区虎ノ門' },
     { postalCode: 1050011, addr: '東京都港区芝公園' },
+    { postalCode: 5110267, addr: '三重県いなべ市大安町石榑北山' },
+    { postalCode: 5110204, addr: '三重県いなべ市員弁町石仏' },
+    { postalCode: 5110224, addr: '三重県いなべ市員弁町大泉' },
+    { postalCode: 5110217, addr: '三重県いなべ市員弁町大泉新田' },
 ];
 
 // 簡易的な refTrie を構築するヘルパー関数
@@ -161,6 +165,19 @@ describe('searchTrieSubstr', () => {
             assert.strictEqual(result[1].addressCandidate, "東京都千代田区富士見");
             assert.deepStrictEqual(result[1].matchRange, [3, 7]);
         }
+    });
+
+    // クエリへの完全一致後にchildがある場合
+    it('クエリへの完全一致後にchildがある場合', () => {
+        const result = searchTrieSubstr(refTrie, '員弁町大泉', 10);
+
+        assert.strictEqual(result.length, 2);
+        assert.strictEqual(result[0].postalCode, 5110224);
+        assert.strictEqual(result[0].addressCandidate, "三重県いなべ市員弁町大泉");
+        assert.deepStrictEqual(result[0].matchRange, [7, 12]);
+        assert.strictEqual(result[1].postalCode, 5110217);
+        assert.strictEqual(result[1].addressCandidate, "三重県いなべ市員弁町大泉新田");
+        assert.deepStrictEqual(result[1].matchRange, [7, 12]);
     });
 
     // 空文字列での検索は結果を返さないことを確認

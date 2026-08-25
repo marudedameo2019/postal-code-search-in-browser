@@ -13,6 +13,11 @@ const buildTestTrieData = () => {
     addTrieNode(root, "東京都", 1000000);
     addTrieNode(root, "東京23区", 1000001);
     addTrieNode(root, "大阪府", 5300000);
+    addTrieNode(root, "三重県いなべ市大安町石榑北山", 5110267);
+    addTrieNode(root, "三重県いなべ市員弁町石仏", 5110204);
+    addTrieNode(root, "三重県いなべ市員弁町大泉", 5110224);
+    addTrieNode(root, "三重県いなべ市員弁町大泉新田", 5110217);
+
     const refTrie = createReferenceTrie(root);
     const { serialize } = convertToStatic(root, refTrie);
     const [fullstring, fullnumbers] = serialize();
@@ -118,6 +123,13 @@ describe('staticSearchContext', () => {
             const resultsOsakaSubstr = context.staticSearchTrieSubstr("大阪", 10);
             assert.ok(Array.isArray(resultsOsakaSubstr));
             assert.strictEqual(resultsOsakaSubstr.length, 1);
+
+            // "員弁町大泉" を含む検索
+            {
+                const results = context.staticSearchTrieSubstr("員弁町大泉", 10);
+                assert.ok(Array.isArray(results));
+                assert.strictEqual(results.length, 2);
+            }
 
         } finally {
             global.fetch = originalFetch;

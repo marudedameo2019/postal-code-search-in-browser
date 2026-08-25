@@ -306,31 +306,34 @@ export const staticSearchContext = async (url: string): Promise<{
                     const node_value_tmp = trie[resultItem.rs[0] * TRIE_NUMBERS + TRIE_VALUE];
                     const node_value = node_value_tmp === UINT32_NAN ? undefined : node_value_tmp;
                     const node_children_length = trie[resultItem.rs[0] * TRIE_NUMBERS + TRIE_CHILDREN_LEN];
+                    const result = [] as SearchResult[];
+                    if (node_value !== undefined || node_children_length === 0) {
+                        const addr = getStaticParentsBase(trie, TRIE_NUMBERS, resultItem.rs[0]);
+                        const baselen = addr.length - resultItem.idx - resultItem.rs[1];
+                        result.push({
+                            postalCode: node_value,
+                            addressCandidate: addr,
+                            matchRange: [baselen, baselen + maxLen],
+                        } as SearchResult);
+                    }
                     if (node_children_length > 0) {
                         const node_children_idx = trie[resultItem.rs[0] * TRIE_NUMBERS + TRIE_CHILDREN_IDX];
-                        return numbers.slice(node_children_idx, node_children_idx + node_children_length).values()
-                            .map(elm => {
+                        numbers.slice(node_children_idx, node_children_idx + node_children_length).values()
+                            .forEach(elm => {
                                 const value_tmp = trie[elm * TRIE_NUMBERS + TRIE_VALUE];
                                 const value = value_tmp === UINT32_NAN ? undefined : value_tmp;
                                 const addr = getStaticParentsBase(trie, TRIE_NUMBERS, elm);
                                 const key = trie[elm * TRIE_NUMBERS + TRIE_KEY];
                                 const key_len = stringnumbders[key * 2 + 1];
                                 const baselen = addr.length - resultItem.idx - resultItem.rs[1] - key_len;
-                                return {
+                                result.push({
                                     postalCode: value,
                                     addressCandidate: addr,
                                     matchRange: [baselen, baselen + maxLen],
-                                } as SearchResult;
+                                } as SearchResult);
                             });
-                    } else {
-                        const addr = getStaticParentsBase(trie, TRIE_NUMBERS, resultItem.rs[0]);
-                        const baselen = addr.length - resultItem.idx - resultItem.rs[1];
-                        return [{
-                            postalCode: node_value,
-                            addressCandidate: addr,
-                            matchRange: [baselen, baselen + maxLen],
-                        } as SearchResult];
                     }
+                    return result;
                 }
             })
             .take(limit)

@@ -12,6 +12,10 @@ describe('searchTrieRoot', () => {
         addTrieNode(root, '東京都', 1000000);
         addTrieNode(root, '東京23区', 1000001);
         addTrieNode(root, '大阪府', 5400000);
+        addTrieNode(root, "三重県いなべ市大安町石榑北山", 5110267);
+        addTrieNode(root, "三重県いなべ市員弁町石仏", 5110204);
+        addTrieNode(root, "三重県いなべ市員弁町大泉", 5110224);
+        addTrieNode(root, "三重県いなべ市員弁町大泉新田", 5110217);
 
         return root;
     };
@@ -25,6 +29,19 @@ describe('searchTrieRoot', () => {
         assert.strictEqual(result.length, 1);
         assert.strictEqual(result[0].postalCode, 1000000);
         assert.strictEqual(result[0].addressCandidate, "東京都");
+    });
+
+    it('完全一致する場合、そのノードを返すが、続くノードがある場合はそれらも返す', () => {
+        const trie = createTestTrie();
+
+        // "東京都" で検索。完全一致するノードが存在するため、そのノードを返し、nodeNextはundefined
+        const result = searchTrieRoot(trie, '三重県いなべ市員弁町大泉', 10);
+
+        assert.strictEqual(result.length, 2);
+        assert.strictEqual(result[0].postalCode, 5110224);
+        assert.strictEqual(result[0].addressCandidate, "三重県いなべ市員弁町大泉");
+        assert.strictEqual(result[1].postalCode, 5110217);
+        assert.strictEqual(result[1].addressCandidate, "三重県いなべ市員弁町大泉新田");
     });
 
     it('部分一致でノードが存在しない場合、最長一致したノードの候補を返す', () => {

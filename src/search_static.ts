@@ -146,9 +146,19 @@ export const staticSearchContext = async (url: string): Promise<{
             const children_idx = trie[target * TRIE_NUMBERS + TRIE_CHILDREN_IDX];
             const children_len = trie[target * TRIE_NUMBERS + TRIE_CHILDREN_LEN]
             const max: number = children_len > limit ? limit : children_len;
+            const value_tmp = trie[target * TRIE_NUMBERS + TRIE_VALUE];
+            const value = value_tmp === UINT32_NAN ? undefined : value_tmp;
+            r = [] as SearchResult[];
+            if (value !== undefined || max === 0) {
+                r.push({
+                    postalCode: value,
+                    addressCandidate: search,
+                    matchRange: [0, search.length],
+                } as SearchResult);
+            }
             if (max > 0) {
                 const children = numbers.slice(children_idx, children_idx + children_len);
-                r = children.values().take(max).map(e => {
+                children.values().take(max).forEach(e => {
                     const value_tmp = trie[e * TRIE_NUMBERS + TRIE_VALUE];
                     const value = value_tmp === UINT32_NAN ? undefined : value_tmp;
                     const key = trie[e * TRIE_NUMBERS + TRIE_KEY];
@@ -156,20 +166,12 @@ export const staticSearchContext = async (url: string): Promise<{
                     const key_len = stringnumbders[key * 2 + 1];
                     const key_str = strings.slice(key_idx, key_idx + key_len);
                     const addr = `${base}${key_str}`;
-                    return {
+                    r.push({
                         postalCode: value,
                         addressCandidate: addr,
                         matchRange: [0, base.length],
-                    } as SearchResult;
-                }).toArray();
-            } else {
-                const value_tmp = trie[target * TRIE_NUMBERS + TRIE_VALUE];
-                const value = value_tmp === UINT32_NAN ? undefined : value_tmp;
-                r = [{
-                    postalCode: value,
-                    addressCandidate: search,
-                    matchRange: [0, search.length],
-                }];
+                    } as SearchResult);
+                });
             }
         }
         return r;

@@ -28,18 +28,20 @@ export const searchTrieRoot = (trie: TrieNode<number>, search: string, limit: nu
     } else if (rs.index > 0) {
         const children = rs.node.children;
         const max: number = children.length > limit ? limit : children.length;
-        if (max > 0) {
-            r = children.values().take(max).map(e => ({
-                postalCode: e.value,
-                addressCandidate: `${base}${e.key}`,
-                matchRange: [0, base.length],
-            } as SearchResult)).toArray();
-        } else {
-            r = [{
+        r = [] as SearchResult[];
+        if (rs.node.value !== undefined || max === 0) {
+            r.push({
                 postalCode: rs.node.value,
                 addressCandidate: search,
                 matchRange: [0, search.length],
-            }];
+            } as SearchResult);
+        }
+        if (max > 0) {
+            children.values().take(max).forEach(e => r.push({
+                postalCode: e.value,
+                addressCandidate: `${base}${e.key}`,
+                matchRange: [0, base.length],
+            } as SearchResult));
         }
     } else {
         r = [];

@@ -86,6 +86,17 @@ describe('staticSearchContext', () => {
             assert.ok(resultsOsaka[0].postalCode === 5300000);
             assert.ok(resultsOsaka[0].addressCandidate.includes("大阪府"));
 
+            // "員弁町大泉" を含む検索
+            {
+                const results = context.staticSearchTrieRoot("三重県いなべ市員弁町大泉", 10);
+                assert.ok(Array.isArray(results));
+                assert.strictEqual(results.length, 2);
+                assert.ok(results[0].postalCode === 5110224);
+                assert.ok(results[0].addressCandidate.includes("三重県いなべ市員弁町大泉"));
+                assert.ok(results[1].postalCode === 5110217);
+                assert.ok(results[1].addressCandidate.includes("三重県いなべ市員弁町大泉"));
+            }
+
         } finally {
             global.fetch = originalFetch;
         }

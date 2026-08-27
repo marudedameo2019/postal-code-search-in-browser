@@ -63,10 +63,14 @@ export type SearchResult<T> = {
 /**
  * Trie木を深さ優先で走査します。
  * 
- * ルートから葉ノードまで、すべてのパスを探索し、各ノード到達時にコールバック関数を実行します。
+ * ルートノードの子孫ノードをすべて訪問し、各ノード到達時にコールバック関数を実行します。
+ * ルートノード自体はコールバックの対象になりません。
  * 
  * @param root 根ノード
- * @param func 訪問時に呼び出されるコールバック関数。引数はルートから現在ノードまでのパスの配列（祖先を含む）です。
+ * @param func 訪問時に呼び出されるコールバック関数。
+ *   引数はルートから現在ノードまでのパスの配列です。
+ *   パスの先頭要素は常に root であり、末尾要素が現在訪問中のノードです。
+ *   例: root -> A -> B の場合、B訪問時に [root, A, B] が渡されます。
  */
 export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: TrieNode<T>[]) => void): void => {
     let target: TrieNode<T> = root;
@@ -96,6 +100,16 @@ export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: TrieNode<T>[]) =>
     }
 }
 
+/**
+ * ノードまでのパスを構成するキー文字列の総長を返します。
+ * 
+ * getParentsBase と処理が重複していますが、
+ * 文字列の結合（join）は長さの合計よりもコストが大きい（メモリ確保・コピー）ため、
+ * 長さのみが必要な場合に文字列生成を回避するためにあえて別の関数として用意しています。
+ * 
+ * @param t 基準となるノード
+ * @returns ルート方向へのパスを構成するキー文字列の総長
+ */
 export const getParentsBaseLength = <T>(t: TrieNode<T>): number => {
     if (t == null) return 0;
     let len: number = 0;
@@ -169,7 +183,8 @@ export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): 
             }
         } else {
             // キーが一致しない場合（部分的な一致など）、新規ノードとして追加
-            addTrieNode(refTrie, last.key, [last]);
+            // 既に searchTrie の結果を持っているため、internalAddTrieNode を直接呼び出して重複検索を回避する
+            internalAddTrieNode(rs.node, last.key.slice(rs.index), [last]);
         }
     });
 
@@ -179,11 +194,17 @@ export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): 
 
 /**
  * 2つの文字列の共通接頭辞の長さを計算します。
+ * 
+ * @param target 比較対象の文字列
+ * @param search 検索する文字列
+ * @param searchStart search 文字列内の開始オフセット（デフォルト 0）
+ * @returns 共通接頭辞の長さ
  */
-const commonLength = (target: string, search: string): number => {
+const commonLength = (target: string, search: string, searchStart: number = 0): number => {
     let index = 0;
-    const maxLength = target.length > search.length ? search.length : target.length;
-    for (; index < maxLength && target[index] === search[index]; ++index);
+    const searchLen = search.length - searchStart;
+    const maxLength = target.length > searchLen ? searchLen : target.length;
+    for (; index < maxLength && target[index] === search[searchStart + index]; ++index);
     return index;
 }
 
@@ -209,21 +230,20 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
     let canLoop: boolean = true;
     let nextComLen = 0;
 
-    while (canLoop && key.length > 0) {
+    while (canLoop && index < key.length) {
         const children = target.children;
         canLoop = false;
 
         for (let i = 0; i < children.length; ++i) {
             const child = children[i];
-            // 子ノードのキーと、残りの検索キーの共通部分を確認
-            const comLen = commonLength(child.key, key);
+            // 子ノードのキーと、残りの検索キー（index 以降）の共通部分を確認
+            const comLen = commonLength(child.key, key, index);
 
             if (comLen > 0) {
                 // 子ノードのキーが検索キーのプレフィックスと完全に一致する場合
                 if (comLen === child.key.length) {
                     target = child;
                     index += comLen;
-                    key = key.slice(comLen);
                     canLoop = true;
                 } else {
                     // 部分的な一致が見つかった場合、候補として記録して終了（より深い探索はしない）

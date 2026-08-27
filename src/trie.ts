@@ -209,6 +209,49 @@ const commonLength = (target: string, search: string, searchStart: number = 0): 
 }
 
 /**
+ * 辞書順にソートされた子ノード配列から、指定文字列の先頭文字と一致する子ノードのインデックスを二分探索で探す。
+ * 
+ * @param children 辞書順にソートされた子ノード配列
+ * @param firstChar 探す先頭文字
+ * @returns 一致する子ノードのインデックス。見つからなければ -1
+ */
+const findChildByFirstChar = <T>(children: TrieNode<T>[], firstChar: string): number => {
+    let lo = 0;
+    let hi = children.length - 1;
+    while (lo <= hi) {
+        const mid = (lo + hi) >>> 1;
+        const midKey = children[mid].key[0];
+        if (midKey === firstChar) {
+            return mid;
+        } else if (midKey < firstChar) {
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return -1;
+};
+
+/**
+ * 辞書順にソートされた子ノード配列に、新しいノードを適切な位置に挿入する。
+ * 二分探索で挿入位置を O(log n) で特定する。
+ */
+const insertNodeAtSortedPosition = <T>(parent: TrieNode<T>, newNode: TrieNode<T>): void => {
+    const children = parent.children;
+    let lo = 0;
+    let hi = children.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (newNode.key > children[mid].key) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    children.splice(lo, 0, newNode);
+};
+
+/**
  * Trie木内で指定されたキーを検索します。
  * 
  * 検索キーに対して、Trie木内で最長一致するパスを探索します。
@@ -234,9 +277,12 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
         const children = target.children;
         canLoop = false;
 
-        for (let i = 0; i < children.length; ++i) {
-            const child = children[i];
-            // 子ノードのキーと、残りの検索キー（index 以降）の共通部分を確認
+        // 二分探索で先頭文字が一致する子ノードを O(log n) で特定
+        const firstChar = key[index];
+        const idx = findChildByFirstChar(children, firstChar);
+
+        if (idx !== -1) {
+            const child = children[idx];
             const comLen = commonLength(child.key, key, index);
 
             if (comLen > 0) {
@@ -250,7 +296,6 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
                     nextNode = child;
                     nextComLen = comLen;
                 }
-                break;
             }
         }
     }
@@ -288,35 +333,21 @@ export const addTrieNode = <T>(root: TrieNode<T>, key: string, value: T): boolea
 }
 
 /**
- * ノードまでのパスを構成するキー文字列を結合して返します。
- */
-const insertNodeAtSortedPosition = <T>(parent: TrieNode<T>, newNode: TrieNode<T>): void => {
-    const children = parent.children;
-    let insertIdx = 0;
-    while (insertIdx < children.length && newNode.key > children[insertIdx].key) {
-        insertIdx++;
-    }
-    children.splice(insertIdx, 0, newNode);
-};
-
-/**
  * Trie木への内部追加処理。
+ * 
+ * 二分探索を用いて、remainingKey の先頭文字と一致する子ノードを O(log n) で特定する。
+ * 兄弟ノードの key は先頭文字が異なる（comLen = 0）ため、一致する子ノードは最大1つ。
  */
 const internalAddTrieNode = <T>(root: TrieNode<T>, remainingKey: string, value: T): boolean => {
     const children = root.children;
+    const firstChar = remainingKey[0];
 
-    for (let i = 0; i < children.length; ++i) {
-        const child = children[i];
+    // 二分探索で先頭文字が一致する子ノードを探す
+    const idx = findChildByFirstChar(children, firstChar);
+
+    if (idx !== -1) {
+        const child = children[idx];
         const comLen = commonLength(child.key, remainingKey);
-
-        // Case 1: 共通接頭辞がない場合
-        if (comLen === 0) {
-            // すでに辞書順で child.key > remainingKey なら、以降の子ノードもすべて大きいので挿入位置確定
-            if (child.key > remainingKey) {
-                break;
-            }
-            continue;
-        }
 
         // Case 2: child.key が remainingKey のプレフィックスである場合
         // e.g., child="app", remainingKey="application"
@@ -327,13 +358,13 @@ const internalAddTrieNode = <T>(root: TrieNode<T>, remainingKey: string, value: 
         // Case 3: remainingKey が child.key のプレフィックスである場合
         // e.g., child="application", remainingKey="app"
         if (comLen === remainingKey.length) {
-            splitChildNode(root, children, i, comLen, value);
+            splitChildNode(root, children, idx, comLen, value);
             return true;
         }
 
         // Case 4: 部分的な一致（両方が互いのプレフィックスではない）
         // e.g., child="apple", remainingKey="appli" -> comLen=4
-        splitChildNodeForPartialMatch(root, children, i, comLen, remainingKey, value);
+        splitChildNodeForPartialMatch(root, children, idx, comLen, remainingKey, value);
         return true;
     }
 

@@ -261,10 +261,10 @@ describe('トライ木', () => {
     });
 
     describe('getParentsBase', () => {
-        it('ルートまたはnullに対して空文字列を返すこと', () => {
+        it('ルートまたはundefinedに対して空文字列を返すこと', () => {
             const root = createRootNode<string>();
             assert.strictEqual(getParentsBase(root), '');
-            assert.strictEqual(getParentsBase(null as any), '');
+            assert.strictEqual(getParentsBase<string>(undefined as any), '');
         });
 
         it('ノードに対して正しいパス文字列を返すこと', () => {

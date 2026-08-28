@@ -58,6 +58,12 @@ export type SearchResult<T> = {
      * nextNodeが存在する場合のみ有効です。
      */
     nextComLen: number;
+    /**
+     * nextNodeが node.children 配列内のインデックス。
+     * nextNode が undefined の場合は -1。
+     * 追加処理時に二分探索を省略するために使用される。
+     */
+    nextChildIndex: number;
 };
 
 /**
@@ -71,6 +77,9 @@ export type SearchResult<T> = {
  *   引数はルートから現在ノードまでのパスの配列です。
  *   パスの先頭要素は常に root であり、末尾要素が現在訪問中のノードです。
  *   例: root -> A -> B の場合、B訪問時に [root, A, B] が渡されます。
+ *   **注意**: 渡される配列は内部状態の参照です。
+ *   コールバック内で push / pop / splice などの変更操作を行うと、
+ *   走査の内部状態が破損します。読み取り専用（immutable）として扱ってください。
  */
 export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: TrieNode<T>[]) => void): void => {
     let target: TrieNode<T> = root;
@@ -111,9 +120,9 @@ export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: TrieNode<T>[]) =>
  * @returns ルート方向へのパスを構成するキー文字列の総長
  */
 export const getParentsBaseLength = <T>(t: TrieNode<T>): number => {
-    if (t == null) return 0;
+    if (t === undefined) return 0;
     let len: number = 0;
-    while (t.parent != null && t.key !== "") {
+    while (t.parent !== undefined) {
         len += t.key.length;
         t = t.parent;
     }
@@ -130,9 +139,9 @@ export const getParentsBaseLength = <T>(t: TrieNode<T>): number => {
  * @returns ルート方向へのパスを構成するキー文字列（逆順で連結された結果）
  */
 export const getParentsBase = <T>(ref: TrieNode<T>): string => {
-    if (ref == null) return "";
+    if (ref === undefined) return "";
     const ary: string[] = [];
-    while (ref.parent != null && ref.key !== "") {
+    while (ref.parent !== undefined) {
         ary.push(ref.key);
         ref = ref.parent;
     }
@@ -152,6 +161,10 @@ export type ReferenceNode<T> = TrieNode<TrieNode<T>[]>;
  * つまりrootノードから連なる子孫の文字列(各childrenのキー)から、そのノードを引けるインデックスです。
  * インデックスを作成する際、検索可能とする最低子ノード数を指定すると、分岐の少ないノードを検索できなくすることで
  * インデックスサイズを若干小さくできます。
+ * 
+ * リーフノード（子ノードが0個のノード）にもリファレンスを作成します。
+ * リーフノードは value を持つ終端ノードであり、そのキー自体が検索対象となるためです。
+ * 例: 末尾の文字列だけで検索した場合に、対応するリーフノードにヒットさせる必要があります。
  * 
  * @param root 元のTrie木の根ノード
  * @param minChld 中間ノードでリファレンスを生成する最低子ノード数
@@ -182,9 +195,16 @@ export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): 
                 existingArray.push(last);
             }
         } else {
-            // キーが一致しない場合（部分的な一致など）、新規ノードとして追加
-            // 既に searchTrie の結果を持っているため、internalAddTrieNode を直接呼び出して重複検索を回避する
-            internalAddTrieNode(rs.node, last.key.slice(rs.index), [last]);
+            // searchTrie の結果（nextNode, nextComLen, nextChildIndex）をヒントとして利用し、
+            // 二分探索と commonLength の再計算を省略する
+            internalAddTrieNodeWithHint(
+                rs.node,
+                last.key.slice(rs.index),
+                [last],
+                rs.nextNode,
+                rs.nextComLen,
+                rs.nextChildIndex
+            );
         }
     });
 
@@ -195,9 +215,14 @@ export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): 
 /**
  * 2つの文字列の共通接頭辞の長さを計算します。
  * 
+ * searchStart パラメータは、呼び出し側で slice による文字列コピーを回避し、
+ * 無駄な文字列生成のコストを省くためのパフォーマンス考慮です。
+ * 
  * @param target 比較対象の文字列
  * @param search 検索する文字列
- * @param searchStart search 文字列内の開始オフセット（デフォルト 0）
+ * @param searchStart search 文字列内の開始オフセット（デフォルト 0）。
+ *   呼び出し側で slice を行わずにオフセットを指定することで、
+ *   文字列コピーのオーバーヘッドを回避できます。
  * @returns 共通接頭辞の長さ
  */
 const commonLength = (target: string, search: string, searchStart: number = 0): number => {
@@ -265,6 +290,7 @@ const insertNodeAtSortedPosition = <T>(parent: TrieNode<T>, newNode: TrieNode<T>
  *   - index: key内で一致が終了したインデックス（一致した文字数）
  *   - nextNode: 部分的に一致した次の候補ノード（存在する場合、keyの残りが子ノードのキーと一部一致している場合）
  *   - nextComLen: nextNodeとの共通接頭辞の長さ（nextNodeが存在する場合のみ有効）
+ *   - nextChildIndex: nextNodeがnode.children配列内のインデックス（nextNodeがundefinedの場合は-1）
  */
 export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> => {
     let target: TrieNode<T> = root;
@@ -272,6 +298,7 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
     let nextNode: TrieNode<T> | undefined;
     let canLoop: boolean = true;
     let nextComLen = 0;
+    let nextChildIndex = -1;
 
     while (canLoop && index < key.length) {
         const children = target.children;
@@ -295,6 +322,7 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
                     // 部分的な一致が見つかった場合、候補として記録して終了（より深い探索はしない）
                     nextNode = child;
                     nextComLen = comLen;
+                    nextChildIndex = idx;
                 }
             }
         }
@@ -305,6 +333,7 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
         index: index,
         nextNode: nextNode,
         nextComLen: nextComLen,
+        nextChildIndex: nextChildIndex,
     };
 }
 
@@ -328,8 +357,16 @@ export const addTrieNode = <T>(root: TrieNode<T>, key: string, value: T): boolea
     // キーが完全に一致する場合（既に存在）
     if (key.length === r.index) return false;
 
-    // 残りのキーを内部追加処理へ渡す
-    return internalAddTrieNode(r.node, key.slice(r.index), value);
+    // searchTrie の結果（nextNode, nextComLen, nextChildIndex）をヒントとして利用し、
+    // 二分探索と commonLength の再計算を省略する
+    return internalAddTrieNodeWithHint(
+        r.node,
+        key.slice(r.index),
+        value,
+        r.nextNode,
+        r.nextComLen,
+        r.nextChildIndex
+    );
 }
 
 /**
@@ -377,6 +414,62 @@ const internalAddTrieNode = <T>(root: TrieNode<T>, remainingKey: string, value: 
     };
 
     insertNodeAtSortedPosition(root, newNode);
+    return true;
+};
+
+/**
+ * searchTrie の結果をヒントとして利用する内部追加処理。
+ * 
+ * searchTrie が既に nextNode（部分一致の子ノード）、nextComLen（共通接頭辞の長さ）、
+ * nextChildIndex（children配列内の位置）を計算済みのため、
+ * 二分探索（findChildByFirstChar）と commonLength の再計算を省略できる。
+ * 
+ * searchTrie の性質上、この関数が呼ばれる時点で以下が保証される：
+ * - hintNode が定義されている場合: hintComLen > 0 かつ hintComLen < hintNode.key.length
+ *   （Case 2 に該当する場合は searchTrie 内で既に深掘り済み）
+ * - hintNode が undefined の場合: 一致する子ノードが存在しない（Case 5）
+ * 
+ * @param root 追加対象の親ノード
+ * @param remainingKey 追加する残りキー文字列
+ * @param value 設定する値
+ * @param hintNode searchTrie が特定した部分一致の子ノード（存在しない場合は undefined）
+ * @param hintComLen hintNode と remainingKey の共通接頭辞の長さ
+ * @param hintChildIndex hintNode が root.children 配列内のインデックス（hintNode が undefined の場合は -1）
+ * @returns 追加が成功した場合は true
+ */
+const internalAddTrieNodeWithHint = <T>(
+    root: TrieNode<T>,
+    remainingKey: string,
+    value: T,
+    hintNode: TrieNode<T> | undefined,
+    hintComLen: number,
+    hintChildIndex: number
+): boolean => {
+    if (hintNode === undefined) {
+        // Case 5: 一致する子ノードが見つからなかった場合、新規ノードを追加
+        const newNode: TrieNode<T> = {
+            key: remainingKey,
+            parent: root,
+            children: [],
+            value: value,
+        };
+        insertNodeAtSortedPosition(root, newNode);
+        return true;
+    }
+
+    const children = root.children;
+    const comLen = hintComLen;
+
+    // Case 3: remainingKey が hintNode.key のプレフィックスである場合
+    // e.g., hintNode.key="application", remainingKey="app"
+    if (comLen === remainingKey.length) {
+        splitChildNode(root, children, hintChildIndex, comLen, value);
+        return true;
+    }
+
+    // Case 4: 部分的な一致（両方が互いのプレフィックスではない）
+    // e.g., hintNode.key="apple", remainingKey="appli" -> comLen=4
+    splitChildNodeForPartialMatch(root, children, hintChildIndex, comLen, remainingKey, value);
     return true;
 };
 
@@ -444,6 +537,9 @@ const splitChildNode = <T>(
  * 例: child="apple", remainingKey="appli" (comLen=4)
  * -> commonNode("appl") <- child("e")
  *    commonNode に newNode("i") を追加
+ * 
+ * Case 4 の前提条件（comLen < remainingKey.length）により、
+ * newKey は必ず非空文字列です。
  */
 const splitChildNodeForPartialMatch = <T>(
     parent: TrieNode<T>,
@@ -457,17 +553,12 @@ const splitChildNodeForPartialMatch = <T>(
 
     const newKey = remainingKey.slice(comLen);
 
-    if (newKey.length > 0) {
-        const newNode: TrieNode<T> = {
-            key: newKey,
-            parent: commonNode,
-            children: [],
-            value: value,
-        };
+    const newNode: TrieNode<T> = {
+        key: newKey,
+        parent: commonNode,
+        children: [],
+        value: value,
+    };
 
-        insertNodeAtSortedPosition(commonNode, newNode);
-    } else {
-        // remainingKey が prefix と完全に一致する場合（理論的には comLen === remainingKey.length のケースと重複するが、安全のため）
-        commonNode.value = value;
-    }
+    insertNodeAtSortedPosition(commonNode, newNode);
 };

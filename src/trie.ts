@@ -77,11 +77,11 @@ export type SearchResult<T> = {
  *   引数はルートから現在ノードまでのパスの配列です。
  *   パスの先頭要素は常に root であり、末尾要素が現在訪問中のノードです。
  *   例: root -> A -> B の場合、B訪問時に [root, A, B] が渡されます。
- *   **注意**: 渡される配列は内部状態の参照です。
+ *   **注意**: 渡される配列は readonly 型です。
  *   コールバック内で push / pop / splice などの変更操作を行うと、
  *   走査の内部状態が破損します。読み取り専用（immutable）として扱ってください。
  */
-export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: TrieNode<T>[]) => void): void => {
+export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: readonly TrieNode<T>[]) => void): void => {
     let target: TrieNode<T> = root;
     const pathStack: TrieNode<T>[] = [];
     const indexStack: number[] = [];
@@ -96,7 +96,7 @@ export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: TrieNode<T>[]) =>
             i = 0;
 
             pathStack.push(target);
-            func(pathStack);
+            func(pathStack as readonly TrieNode<T>[]);
             pathStack.pop();
         } else {
             if (pathStack.length > 0) {
@@ -370,72 +370,37 @@ export const addTrieNode = <T>(root: TrieNode<T>, key: string, value: T): boolea
 }
 
 /**
- * Trie木への内部追加処理。
- * 
- * 二分探索を用いて、remainingKey の先頭文字と一致する子ノードを O(log n) で特定する。
- * 兄弟ノードの key は先頭文字が異なる（comLen = 0）ため、一致する子ノードは最大1つ。
- */
-const internalAddTrieNode = <T>(root: TrieNode<T>, remainingKey: string, value: T): boolean => {
-    const children = root.children;
-    const firstChar = remainingKey[0];
-
-    // 二分探索で先頭文字が一致する子ノードを探す
-    const idx = findChildByFirstChar(children, firstChar);
-
-    if (idx !== -1) {
-        const child = children[idx];
-        const comLen = commonLength(child.key, remainingKey);
-
-        // Case 2: child.key が remainingKey のプレフィックスである場合
-        // e.g., child="app", remainingKey="application"
-        if (comLen === child.key.length) {
-            return internalAddTrieNode(child, remainingKey.slice(comLen), value);
-        }
-
-        // Case 3: remainingKey が child.key のプレフィックスである場合
-        // e.g., child="application", remainingKey="app"
-        if (comLen === remainingKey.length) {
-            splitChildNode(root, children, idx, comLen, value);
-            return true;
-        }
-
-        // Case 4: 部分的な一致（両方が互いのプレフィックスではない）
-        // e.g., child="apple", remainingKey="appli" -> comLen=4
-        splitChildNodeForPartialMatch(root, children, idx, comLen, remainingKey, value);
-        return true;
-    }
-
-    // Case 5: 一致する子ノードが見つからなかった場合、新規ノードを追加
-    const newNode: TrieNode<T> = {
-        key: remainingKey,
-        parent: root,
-        children: [],
-        value: value,
-    };
-
-    insertNodeAtSortedPosition(root, newNode);
-    return true;
-};
-
-/**
  * searchTrie の結果をヒントとして利用する内部追加処理。
  * 
  * searchTrie が既に nextNode（部分一致の子ノード）、nextComLen（共通接頭辞の長さ）、
  * nextChildIndex（children配列内の位置）を計算済みのため、
  * 二分探索（findChildByFirstChar）と commonLength の再計算を省略できる。
  * 
- * searchTrie の性質上、この関数が呼ばれる時点で以下が保証される：
- * - hintNode が定義されている場合: hintComLen > 0 かつ hintComLen < hintNode.key.length
- *   （Case 2 に該当する場合は searchTrie 内で既に深掘り済み）
- * - hintNode が undefined の場合: 一致する子ノードが存在しない（Case 5）
+ * **前提条件（重要）**:
+ * この関数は searchTrie の結果を引数に渡すことを前提としています。
+ * searchTrie の実装上、hintNode が定義されている場合、必ず以下の条件が成り立ちます：
+ *   - hintComLen > 0
+ *   - hintComLen < hintNode.key.length
+ * 
+ * 理由: searchTrie は comLen === child.key.length の場合、その子ノードへ深掘りして
+ * ループを継続するため、nextNode として返されるのは必ず comLen < child.key.length
+ * （部分一致）の場合のみです。
+ * 
+ * したがって、hintComLen === hintNode.key.length（Case 2: hintNode.key が
+ * remainingKey のプレフィックス）となるケースは searchTrie 経由では発生しません。
+ * この関数を searchTrie を経由せずに直接呼び出す場合は、この前提条件を満たす
+ * 引数を渡す必要があります。満たさない場合はエラーがスローされます。
  * 
  * @param root 追加対象の親ノード
  * @param remainingKey 追加する残りキー文字列
  * @param value 設定する値
  * @param hintNode searchTrie が特定した部分一致の子ノード（存在しない場合は undefined）
  * @param hintComLen hintNode と remainingKey の共通接頭辞の長さ
+ *   **制約**: hintNode が定義されている場合、hintComLen < hintNode.key.length であること
  * @param hintChildIndex hintNode が root.children 配列内のインデックス（hintNode が undefined の場合は -1）
  * @returns 追加が成功した場合は true
+ * @throws Error hintNode が定義されているが hintComLen === hintNode.key.length の場合
+ *   （searchTrie を経由せずに直接呼び出した際に前提条件を満たさない引数が渡された場合）
  */
 const internalAddTrieNodeWithHint = <T>(
     root: TrieNode<T>,
@@ -459,6 +424,17 @@ const internalAddTrieNodeWithHint = <T>(
 
     const children = root.children;
     const comLen = hintComLen;
+
+    // Case 2 のガード: hintNode.key が remainingKey のプレフィックスである場合
+    // searchTrie を経由して呼ばれる場合はこのケースは発生しません。
+    // 直接呼び出しで前提条件を満たさない引数が渡された場合に検出するためのガード。
+    if (comLen === hintNode.key.length) {
+        throw new Error(
+            `internalAddTrieNodeWithHint: Case 2 (hintComLen === hintNode.key.length) is not supported. ` +
+            `This function must be called with results from searchTrie, which guarantees hintComLen < hintNode.key.length. ` +
+            `hintNode.key="${hintNode.key}", remainingKey="${remainingKey}", hintComLen=${hintComLen}`
+        );
+    }
 
     // Case 3: remainingKey が hintNode.key のプレフィックスである場合
     // e.g., hintNode.key="application", remainingKey="app"

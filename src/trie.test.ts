@@ -8,6 +8,7 @@ import {
     createReferenceTrie,
     searchTrie,
     addTrieNode,
+    hasTrieNode,
 } from './trie.js';
 
 describe('トライ木', () => {
@@ -169,6 +170,35 @@ describe('トライ木', () => {
             assert.strictEqual(res.node.value, 'value1');
         });
 
+        it('hasTrieNode がノードの存在を正しく判定すること', () => {
+            const root = createRootNode<string>();
+            addTrieNode(root, 'app', 'val_app');
+            addTrieNode(root, 'application', 'val_application');
+
+            // 実際に存在するノード
+            assert.strictEqual(hasTrieNode(root, 'app'), true);
+            assert.strictEqual(hasTrieNode(root, 'application'), true);
+
+            // 部分一致 / 存在しないキー
+            assert.strictEqual(hasTrieNode(root, 'a'), false);
+            assert.strictEqual(hasTrieNode(root, 'appl'), false);
+            assert.strictEqual(hasTrieNode(root, 'apple'), false);
+            assert.strictEqual(hasTrieNode(root, 'x'), false);
+            assert.strictEqual(hasTrieNode(root, ''), false);
+        });
+
+        it('value が undefined のノードも存在判定できること', () => {
+            const root = createRootNode<string | undefined>();
+            addTrieNode(root, 'undef', undefined);
+
+            // value が undefined なので value の有無だけでは存在判定できない
+            const res = searchTrie(root, 'undef');
+            assert.strictEqual(res.node.value, undefined);
+            // hasTrieNode は最長一致で正しく判定する
+            assert.strictEqual(hasTrieNode(root, 'undef'), true);
+            assert.strictEqual(hasTrieNode(root, 'unde'), false);
+        });
+
         it('空文字列のキー追加を処理できること（失敗または無視されるべき）', () => {
             const root = createRootNode<string>();
             // addTrieNode returns false for empty keys based on implementation
@@ -264,7 +294,7 @@ describe('トライ木', () => {
         it('ルートまたはundefinedに対して空文字列を返すこと', () => {
             const root = createRootNode<string>();
             assert.strictEqual(getParentsBase(root), '');
-            assert.strictEqual(getParentsBase<string>(undefined as any), '');
+            assert.strictEqual(getParentsBase<string>(undefined), '');
         });
 
         it('ノードに対して正しいパス文字列を返すこと', () => {

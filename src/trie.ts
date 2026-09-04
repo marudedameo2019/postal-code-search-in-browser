@@ -10,7 +10,14 @@ export type TrieNode<T> = {
      */
     parent: TrieNode<T> | undefined;
     /**
-     * 子ノードのリスト。辞書順にソートされていることが期待される。
+     * 子ノードのリスト。以下の不変条件を満たす必要がある：
+     * - 不変条件1: keyの辞書順にソートされていること。
+     *   findChildByFirstChar / insertNodeAtSortedPosition の二分探索がこれに依存する。
+     * - 不変条件2: 兄弟ノードのkeyの先頭文字が互いに異なること（Patricia trie の性質）。
+     *   findChildByFirstChar は先頭文字のみで候補を特定するため、
+     *   これが破られていると誤ったノードのインデックス（または -1）を**エラーなく**返す。
+     * addTrieNode 経由で構築した木では常に成り立つが、
+     * 木を直接構築・改変する場合は両条件を維持する責任がある。
      */
     children: TrieNode<T>[];
     /**
@@ -49,8 +56,11 @@ export type SearchResult<T> = {
     index: number;
     /** 
      * 部分的に一致した次の候補ノード。
-     * 検索キーの残りが、ある子ノードのキーと一部共通接頭辞を持つ場合に設定されます。
+     * 検索キーの残りが、node の直接の子ノードのキーと一部共通接頭辞を持つ場合に設定されます。
      * 完全一致が見つかった場合は undefined です。
+     * 
+     * **保証**: nextNode が定義されている場合、必ず nextNode === node.children[nextChildIndex] が成り立ちます。
+     * つまり nextNode は node の直接の子ノードであり、node.children 配列の要素です。
      */
     nextNode: TrieNode<T> | undefined;
     /** 
@@ -61,6 +71,8 @@ export type SearchResult<T> = {
     /**
      * nextNodeが node.children 配列内のインデックス。
      * nextNode が undefined の場合は -1。
+     * 
+     * **保証**: nextNode が定義されている場合、node.children[nextChildIndex] === nextNode が成り立ちます。
      * 追加処理時に二分探索を省略するために使用される。
      */
     nextChildIndex: number;
@@ -116,10 +128,10 @@ export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: readonly TrieNode
  * 文字列の結合（join）は長さの合計よりもコストが大きい（メモリ確保・コピー）ため、
  * 長さのみが必要な場合に文字列生成を回避するためにあえて別の関数として用意しています。
  * 
- * @param t 基準となるノード
+ * @param t 基準となるノード。undefined の場合は 0 を返す。
  * @returns ルート方向へのパスを構成するキー文字列の総長
  */
-export const getParentsBaseLength = <T>(t: TrieNode<T>): number => {
+export const getParentsBaseLength = <T>(t: TrieNode<T> | undefined): number => {
     if (t === undefined) return 0;
     let len: number = 0;
     while (t.parent !== undefined) {
@@ -135,10 +147,10 @@ export const getParentsBaseLength = <T>(t: TrieNode<T>): number => {
  * 引数で指定されたノードからルート方向へ遡り、各ノードの key を結合した文字列を生成します。
  * ルートノードに到達するか、親がいない時点で終了します。
  * 
- * @param ref 基準となるノード
+ * @param ref 基準となるノード。undefined の場合は空文字列を返す。
  * @returns ルート方向へのパスを構成するキー文字列（逆順で連結された結果）
  */
-export const getParentsBase = <T>(ref: TrieNode<T>): string => {
+export const getParentsBase = <T>(ref: TrieNode<T> | undefined): string => {
     if (ref === undefined) return "";
     const ary: string[] = [];
     while (ref.parent !== undefined) {
@@ -172,13 +184,11 @@ export type ReferenceNode<T> = TrieNode<TrieNode<T>[]>;
  */
 export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): ReferenceNode<T> => {
     const refTrie = createRootNode<TrieNode<T>[]>();
-    let total: number = 0;
 
     traverseTrie(root, ary => {
         const last = ary[ary.length - 1];
         if (last.children.length > 0 && last.children.length < minChld) return;
 
-        ++total;
         const key = last.key;
 
         // リファレンストライ内で同じキーを持つノードを検索
@@ -208,7 +218,6 @@ export const createReferenceTrie = <T>(root: TrieNode<T>, minChld: number = 0): 
         }
     });
 
-    // console.log(`top ref count: ${refTrie.children.length}, total ref count: ${total}`)
     return refTrie;
 };
 
@@ -236,7 +245,12 @@ const commonLength = (target: string, search: string, searchStart: number = 0): 
 /**
  * 辞書順にソートされた子ノード配列から、指定文字列の先頭文字と一致する子ノードのインデックスを二分探索で探す。
  * 
- * @param children 辞書順にソートされた子ノード配列
+ * **前提条件**: children は TrieNode.children の不変条件
+ * （辞書順ソート、かつ兄弟ノードのkeyの先頭文字が互いに異なること）を満たすこと。
+ * 先頭文字が一致するノードが最大1つであることを保証しているのはこの不変条件であり、
+ * 満たさない場合は誤ったインデックス（または -1）をエラーなく返す。
+ * 
+ * @param children 前提条件を満たす子ノード配列
  * @param firstChar 探す先頭文字
  * @returns 一致する子ノードのインデックス。見つからなければ -1
  */
@@ -288,9 +302,11 @@ const insertNodeAtSortedPosition = <T>(parent: TrieNode<T>, newNode: TrieNode<T>
  * @returns SearchResultオブジェクト。以下のプロパティを含みます：
  *   - node: 最長一致したノード（完全一致または部分的な一致の終端）
  *   - index: key内で一致が終了したインデックス（一致した文字数）
- *   - nextNode: 部分的に一致した次の候補ノード（存在する場合、keyの残りが子ノードのキーと一部一致している場合）
+ *   - nextNode: 部分的に一致した次の候補ノード。
+ *     定義されている場合、必ず node の直接の子ノード（node.children の要素）です。
  *   - nextComLen: nextNodeとの共通接頭辞の長さ（nextNodeが存在する場合のみ有効）
- *   - nextChildIndex: nextNodeがnode.children配列内のインデックス（nextNodeがundefinedの場合は-1）
+ *   - nextChildIndex: nextNodeがnode.children配列内のインデックス（nextNodeがundefinedの場合は-1）。
+ *     nextNodeが定義されている場合、node.children[nextChildIndex] === nextNode が保証されます。
  */
 export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> => {
     let target: TrieNode<T> = root;
@@ -338,6 +354,23 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
 }
 
 /**
+ * 指定キーを持つノードがTrie木に存在するかを判定します。
+ *
+ * ノードの value は分割により生成される中間ノードなどで undefined となるため、
+ * value の有無では「キーが存在して値が undefined」と「キーが存在しない」を区別できません。
+ * 本関数は searchTrie の最長一致がキー全体を消費したかどうかで存在を判定します。
+ * （key 全体が消費されるのは、そのキーに対応するノードが実際に存在する場合のみです。）
+ *
+ * @param root 判定対象のTrie木の根ノード
+ * @param key 存在を確認するキー文字列
+ * @returns キーに対応するノードが存在する場合は true。空文字列は常に false。
+ */
+export const hasTrieNode = <T>(root: TrieNode<T>, key: string): boolean => {
+    if (key.length === 0) return false;
+    return searchTrie(root, key).index === key.length;
+};
+
+/**
  * Trie木にノードを追加します。
  * 
  * 指定されたキーが既に存在する場合は何もしません（falseを返す）。
@@ -348,6 +381,9 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
  * @param key 追加するキー文字列
  * @param value キーに対応する値
  * @returns 追加が成功した場合は true、既に存在する場合は false（空文字列の場合もfalse）
+ * @throws Error 内部関数 internalAddTrieNodeWithHint が前提条件を満たさない引数を受け取った場合にスローされます。
+ *   ただし、本関数は常に searchTrie を経由して internalAddTrieNodeWithHint を呼び出すため、
+ *   実際にはこのエラーは発生しません（searchTrie の実装上、hintComLen < hintNode.key.length が保証される）。
  */
 export const addTrieNode = <T>(root: TrieNode<T>, key: string, value: T): boolean => {
     if (key.length === 0) return false;
@@ -381,6 +417,7 @@ export const addTrieNode = <T>(root: TrieNode<T>, key: string, value: T): boolea
  * searchTrie の実装上、hintNode が定義されている場合、必ず以下の条件が成り立ちます：
  *   - hintComLen > 0
  *   - hintComLen < hintNode.key.length
+ *   - hintNode === root.children[hintChildIndex]
  * 
  * 理由: searchTrie は comLen === child.key.length の場合、その子ノードへ深掘りして
  * ループを継続するため、nextNode として返されるのは必ず comLen < child.key.length
@@ -394,7 +431,8 @@ export const addTrieNode = <T>(root: TrieNode<T>, key: string, value: T): boolea
  * @param root 追加対象の親ノード
  * @param remainingKey 追加する残りキー文字列
  * @param value 設定する値
- * @param hintNode searchTrie が特定した部分一致の子ノード（存在しない場合は undefined）
+ * @param hintNode searchTrie が特定した部分一致の子ノード（存在しない場合は undefined）。
+ *   定義されている場合、必ず root.children[hintChildIndex] === hintNode が成り立ちます。
  * @param hintComLen hintNode と remainingKey の共通接頭辞の長さ
  *   **制約**: hintNode が定義されている場合、hintComLen < hintNode.key.length であること
  * @param hintChildIndex hintNode が root.children 配列内のインデックス（hintNode が undefined の場合は -1）

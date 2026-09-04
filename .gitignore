@@ -1,7 +1,8 @@
-dist/
-node_modules/
-generated/
-.aider*
+/dist/
+/node_modules/
+/generated/
+/.aider*
 data.bin
 *.br
 *.gz
+/opencode.json

@@ -64,7 +64,7 @@ export type SearchResult<T> = {
      */
     nextNode: TrieNode<T> | undefined;
     /** 
-     * nextNodeとの共通接頭辞の長さ。
+     * nextNode.key と検索キーの残り部分（key[index..]）との共通接頭辞の長さ。
      * nextNodeが存在する場合のみ有効です。
      */
     nextComLen: number;
@@ -122,14 +122,17 @@ export const traverseTrie = <T>(root: TrieNode<T>, func: (ary: readonly TrieNode
 }
 
 /**
- * ノードまでのパスを構成するキー文字列の総長を返します。
- * 
+ * 基準ノードを含む、ルートからノードまでのパスを構成するキー文字列の総長を返します。
+ *
+ * ルートノードから基準ノード（**基準ノード自身の key を含む**）までの各ノードの key の長さの合計です。
+ * ルートノードの key は空文字列 "" のため、結果に含めても長さは変わりません。
+ *
  * getParentsBase と処理が重複していますが、
  * 文字列の結合（join）は長さの合計よりもコストが大きい（メモリ確保・コピー）ため、
  * 長さのみが必要な場合に文字列生成を回避するためにあえて別の関数として用意しています。
- * 
+ *
  * @param t 基準となるノード。undefined の場合は 0 を返す。
- * @returns ルート方向へのパスを構成するキー文字列の総長
+ * @returns ルートから基準ノード（自身の key を含む）までのパスのキー文字列の総長
  */
 export const getParentsBaseLength = <T>(t: TrieNode<T> | undefined): number => {
     if (t === undefined) return 0;
@@ -142,13 +145,14 @@ export const getParentsBaseLength = <T>(t: TrieNode<T> | undefined): number => {
 }
 
 /**
- * ノードまでのパスを構成するキー文字列を結合して返します。
- * 
- * 引数で指定されたノードからルート方向へ遡り、各ノードの key を結合した文字列を生成します。
- * ルートノードに到達するか、親がいない時点で終了します。
- * 
+ * 基準ノードを含む、ルートからノードまでのパスを構成するキー文字列を結合して返します。
+ *
+ * 引数で指定されたノード（**自身の key を含む**）からルート方向へ遡り、各ノードの key を結合します。
+ * ルートノードの key は空文字列 "" のため結果に含めても変わらず、
+ * 結果は基準ノードの完全なキー（フルパス）に等しい文字列になります。
+ *
  * @param ref 基準となるノード。undefined の場合は空文字列を返す。
- * @returns ルート方向へのパスを構成するキー文字列（逆順で連結された結果）
+ * @returns ルートから基準ノード（自身の key を含む）までのパスのキー文字列
  */
 export const getParentsBase = <T>(ref: TrieNode<T> | undefined): string => {
     if (ref === undefined) return "";
@@ -304,7 +308,7 @@ const insertNodeAtSortedPosition = <T>(parent: TrieNode<T>, newNode: TrieNode<T>
  *   - index: key内で一致が終了したインデックス（一致した文字数）
  *   - nextNode: 部分的に一致した次の候補ノード。
  *     定義されている場合、必ず node の直接の子ノード（node.children の要素）です。
- *   - nextComLen: nextNodeとの共通接頭辞の長さ（nextNodeが存在する場合のみ有効）
+ *   - nextComLen: nextNode.key と検索キーの残り部分（key[index..]）との共通接頭辞の長さ（nextNodeが存在する場合のみ有効）
  *   - nextChildIndex: nextNodeがnode.children配列内のインデックス（nextNodeがundefinedの場合は-1）。
  *     nextNodeが定義されている場合、node.children[nextChildIndex] === nextNode が保証されます。
  */
@@ -312,35 +316,31 @@ export const searchTrie = <T>(root: TrieNode<T>, key: string): SearchResult<T> =
     let target: TrieNode<T> = root;
     let index = 0; // key内の現在位置
     let nextNode: TrieNode<T> | undefined;
-    let canLoop: boolean = true;
     let nextComLen = 0;
     let nextChildIndex = -1;
 
-    while (canLoop && index < key.length) {
+    while (index < key.length) {
         const children = target.children;
-        canLoop = false;
 
         // 二分探索で先頭文字が一致する子ノードを O(log n) で特定
         const firstChar = key[index];
         const idx = findChildByFirstChar(children, firstChar);
 
-        if (idx !== -1) {
-            const child = children[idx];
-            const comLen = commonLength(child.key, key, index);
+        if (idx === -1) break;
 
-            if (comLen > 0) {
-                // 子ノードのキーが検索キーのプレフィックスと完全に一致する場合
-                if (comLen === child.key.length) {
-                    target = child;
-                    index += comLen;
-                    canLoop = true;
-                } else {
-                    // 部分的な一致が見つかった場合、候補として記録して終了（より深い探索はしない）
-                    nextNode = child;
-                    nextComLen = comLen;
-                    nextChildIndex = idx;
-                }
-            }
+        const child = children[idx];
+        const comLen = commonLength(child.key, key, index);
+
+        // 子ノードのキーが検索キーのプレフィックスと完全に一致する場合
+        if (comLen === child.key.length) {
+            target = child;
+            index += comLen;
+        } else {
+            // 部分的な一致が見つかった場合、候補として記録して終了（より深い探索はしない）
+            nextNode = child;
+            nextComLen = comLen;
+            nextChildIndex = idx;
+            break;
         }
     }
 
@@ -381,9 +381,6 @@ export const hasTrieNode = <T>(root: TrieNode<T>, key: string): boolean => {
  * @param key 追加するキー文字列
  * @param value キーに対応する値
  * @returns 追加が成功した場合は true、既に存在する場合は false（空文字列の場合もfalse）
- * @throws Error 内部関数 internalAddTrieNodeWithHint が前提条件を満たさない引数を受け取った場合にスローされます。
- *   ただし、本関数は常に searchTrie を経由して internalAddTrieNodeWithHint を呼び出すため、
- *   実際にはこのエラーは発生しません（searchTrie の実装上、hintComLen < hintNode.key.length が保証される）。
  */
 export const addTrieNode = <T>(root: TrieNode<T>, key: string, value: T): boolean => {
     if (key.length === 0) return false;

@@ -9,6 +9,7 @@ import { type SearchResult } from './table.js'
  * - 完全一致または部分一致の終端ノード（rs.node）に子ノードがある場合：
  *   最大 limit 件までの子ノード情報を取得し、郵便番号と住所の文字列リストとして返す。
  * - 一致するデータがない場合：空配列を返す。
+ * - limit が 0 以下の場合：空配列を返す。
  * 
  * @param trie 検索対象のトライ木（値は郵便番号）
  * @param search 検索するキー文字列（例: 郵便番号の一部、住所の一部など）
@@ -16,6 +17,7 @@ import { type SearchResult } from './table.js'
  * @returns 郵便番号、住所、マッチ部分の配列。
  */
 export const searchTrieRoot = (trie: TrieNode<number>, search: string, limit: number): SearchResult[] => {
+    if (limit <= 0) return [];
     const rs = searchTrie(trie, search);
     const base = search.slice(0, rs.index);
     let r: SearchResult[];
@@ -27,21 +29,21 @@ export const searchTrieRoot = (trie: TrieNode<number>, search: string, limit: nu
         }];
     } else if (rs.index > 0) {
         const children = rs.node.children;
-        const max: number = children.length > limit ? limit : children.length;
-        r = [] as SearchResult[];
-        if (rs.node.value !== undefined || max === 0) {
+        const max: number = Math.min(limit, children.length);
+        r = [];
+        if (rs.node.value !== undefined) {
             r.push({
                 postalCode: rs.node.value,
-                addressCandidate: search,
-                matchRange: [0, search.length],
-            } as SearchResult);
+                addressCandidate: base,
+                matchRange: [0, base.length],
+            });
         }
         if (max > 0) {
             children.values().take(max).forEach(e => r.push({
                 postalCode: e.value,
                 addressCandidate: `${base}${e.key}`,
                 matchRange: [0, base.length],
-            } as SearchResult));
+            }));
         }
     } else {
         r = [];

@@ -55,7 +55,29 @@ describe('searchTrieRoot', () => {
         // searchTrieRoot は rs.node (最長一致ノード) の子を取得する。
 
         // 結果として、子ノードの数だけ候補が返ってくる。
-        assert.ok(result.length > 0);
+        assert.strictEqual(result.length, 2);
+        assert.strictEqual(result[0].postalCode, 1000001);
+        assert.strictEqual(result[0].addressCandidate, "東京23区");
+        assert.deepStrictEqual(result[0].matchRange, [0, 2]);
+        assert.strictEqual(result[1].postalCode, 1000000);
+        assert.strictEqual(result[1].addressCandidate, "東京都");
+        assert.deepStrictEqual(result[1].matchRange, [0, 2]);
+    });
+
+    it('マッチノードより検索文字列が長い場合、データに存在する実際の住所を返す', () => {
+        const trie = createTestTrie();
+
+        // "三重県いなべ市員弁町大泉" は存在するが "...大泉山" は存在しない。
+        // 候補は検索入力の "...大泉山" ではなく、ノードの実際の住所 "...大泉" でなければならない。
+        const result = searchTrieRoot(trie, '三重県いなべ市員弁町大泉山', 10);
+
+        assert.strictEqual(result.length, 2);
+        assert.strictEqual(result[0].postalCode, 5110224);
+        assert.strictEqual(result[0].addressCandidate, "三重県いなべ市員弁町大泉");
+        assert.deepStrictEqual(result[0].matchRange, [0, "三重県いなべ市員弁町大泉".length]);
+        assert.strictEqual(result[1].postalCode, 5110217);
+        assert.strictEqual(result[1].addressCandidate, "三重県いなべ市員弁町大泉新田");
+        assert.deepStrictEqual(result[1].matchRange, [0, "三重県いなべ市員弁町大泉".length]);
     });
 
     it('一致するデータがない場合、空配列を返す', () => {
@@ -77,5 +99,17 @@ describe('searchTrieRoot', () => {
         const result = searchTrieRoot(trie, 'A', 2);
 
         assert.strictEqual(result.length, 2);
+    });
+
+    it('limit が 0 以下の場合、空配列を返す', () => {
+        const trie = createTestTrie();
+        // 子ノード候補のみが返るケース（node.value が undefined）
+        assert.deepStrictEqual(searchTrieRoot(trie, '東京', 0), []);
+        // 完全一致ノードが存在するケース
+        assert.deepStrictEqual(searchTrieRoot(trie, '東京都', 0), []);
+        // 部分一致候補（nextNode）が返るケース
+        assert.deepStrictEqual(searchTrieRoot(trie, '東京2', 0), []);
+        // 負の limit も空配列
+        assert.deepStrictEqual(searchTrieRoot(trie, '東京', -1), []);
     });
 });
